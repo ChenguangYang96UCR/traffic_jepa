@@ -565,3 +565,84 @@ class Dataset_Pred(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
+
+
+class Dataset_Incident(Dataset):
+    """Load pre-windowed IGSTGNN incident samples."""
+
+    def __init__(
+        self,
+        root_path,
+        flag="train",
+        size=None,
+        features="M",
+        data_path="incident_{flag}.npy",
+        target=None,
+        scale=False,
+        timeenc=0,
+        freq="t",
+        **kwargs,
+    ):
+        self.seq_len = size[0]
+        self.label_len = size[1]
+        self.pred_len = size[2]
+        self.future_len = size[3]
+
+        file_name = data_path.format(flag=flag)
+        file_path = os.path.join(root_path, file_name)
+
+        self.samples = np.load(file_path, allow_pickle=True)
+        self.scale = False
+
+        first_x = np.asarray(self.samples[0]["x_data"])
+        first_y = np.asarray(self.samples[0]["y_data"])
+
+        if self.seq_len > first_x.shape[0]:
+            raise ValueError(
+                f"seq_len={self.seq_len} exceeds history length "
+                f"{first_x.shape[0]}"
+            )
+
+        if self.future_len > first_y.shape[0]:
+            raise ValueError(
+                f"future_len={self.future_len} exceeds future length "
+                f"{first_y.shape[0]}"
+            )
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+
+        # Channel 0 is the traffic value.
+        history = np.asarray(
+            sample["x_data"], dtype=np.float32
+        )[-self.seq_len:, :, 0]
+
+        future = np.asarray(
+            sample["y_data"], dtype=np.float32
+        )[:self.future_len, :, 0]
+
+        decoder_values = np.concatenate(
+            [history[-self.label_len:], future],
+            axis=0,
+        )
+
+        # Empty time markers prevent additional covariate tokens.
+        history_mark = np.empty(
+            (history.shape[0], 0), dtype=np.float32
+        )
+        decoder_mark = np.empty(
+            (decoder_values.shape[0], 0), dtype=np.float32
+        )
+
+        return (
+            history,
+            decoder_values,
+            history_mark,
+            decoder_mark,
+        )
+
+    def __len__(self):
+        return len(self.samples)
+
+    def inverse_transform(self, data):
+        return data
