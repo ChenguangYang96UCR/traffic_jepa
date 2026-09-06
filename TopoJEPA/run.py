@@ -4,6 +4,54 @@ from experiments.exp_long_term_forecasting import Exp_Long_Term_Forecast
 from experiments.exp_long_term_forecasting_partial import Exp_Long_Term_Forecast_Partial
 import random
 import numpy as np
+import os
+import json
+
+
+def infer_incident_cardinalities(args):
+    """Use released mappings, falling back to all split samples."""
+    mapping_specs = (
+        ('incident_num_descriptions', 'desc_mapping.json', 'Description'),
+        ('incident_num_types', 'type_mapping.json', 'Type'),
+    )
+    unresolved = []
+    for arg_name, filename, feature_name in mapping_specs:
+        if getattr(args, arg_name) is not None:
+            continue
+        path = os.path.join(args.root_path, filename)
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as handle:
+                setattr(args, arg_name, max(len(json.load(handle)), 1))
+        else:
+            unresolved.append((arg_name, feature_name))
+
+    need_position = args.incident_num_positions is None
+    maxima = {name: -1 for name, _ in unresolved}
+    position_max = -1
+    if unresolved or need_position:
+        for split in ('train', 'val', 'test'):
+            filename = args.fremont_file_pattern.format(flag=split)
+            path = os.path.join(args.root_path, filename)
+            samples = np.load(path, allow_pickle=True)
+            for sample in samples:
+                features = sample['incident_features']
+                for arg_name, feature_name in unresolved:
+                    value = (features.get(feature_name, 0)
+                             if isinstance(features, dict) else
+                             features[1 if feature_name == 'Description' else 2])
+                    maxima[arg_name] = max(maxima[arg_name], int(value))
+                if need_position:
+                    position_max = max(
+                        position_max, int(sample['incident_position']))
+        for arg_name, _ in unresolved:
+            setattr(args, arg_name, maxima[arg_name] + 1)
+        if need_position:
+            args.incident_num_positions = position_max + 1
+
+    for name in ('incident_num_descriptions', 'incident_num_types',
+                 'incident_num_positions'):
+        if getattr(args, name) < 1:
+            raise ValueError(f'Could not infer a positive --{name}')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='TopoJEPA')
@@ -20,6 +68,26 @@ if __name__ == '__main__':
     parser.add_argument('--data', type=str, required=True, default='custom', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./data/electricity/', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='electricity.csv', help='data csv file')
+    parser.add_argument('--fremont_file_pattern', type=str,
+                        default='incident_{flag}.npy',
+                        help='Fremont split filename pattern under root_path')
+    parser.add_argument('--fremont_traffic_feature', type=int, default=0,
+                        help='traffic channel selected from Fremont x_data/y_data')
+    parser.add_argument('--fremont_use_time_features', action='store_true',
+                        help='also use Fremont time-of-day/day-of-week channels; '
+                             'off means strictly traffic-only input')
+    parser.add_argument('--incident', action='store_true',
+                        help='enable IGSTGNN-style incident conditioning for Fremont JEPA')
+    parser.add_argument('--incident_scale', type=float, default=1.0,
+                        help='scale applied to the temporally decayed incident effect')
+    parser.add_argument('--incident_sigma', type=float, default=1.0,
+                        help='positive Gaussian decay width over forecast steps')
+    parser.add_argument('--incident_num_descriptions', type=int, default=None,
+                        help='Description embedding cardinality; inferred by default')
+    parser.add_argument('--incident_num_types', type=int, default=None,
+                        help='incident Type embedding cardinality; inferred by default')
+    parser.add_argument('--incident_num_positions', type=int, default=None,
+                        help='incident_position embedding cardinality; inferred by default')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
@@ -106,10 +174,27 @@ if __name__ == '__main__':
                         help='weight of Equation-6 Cramer alignment between GNN and Transformer tokens')
     parser.add_argument('--ema_momentum', type=float, default=0.996,
                         help='EMA momentum for the JEPA target encoder')
+    parser.add_argument('--stgcn_kernel_size', type=int, default=3)
+    parser.add_argument('--stgcn_cheb_order', type=int, default=3)
+    parser.add_argument('--stgcn_blocks', type=int, default=2)
+    parser.add_argument('--stgcn_temporal_channels', type=int, default=64)
+    parser.add_argument('--stgcn_spatial_channels', type=int, default=16)
+    parser.add_argument('--stgcn_output_channels', type=int, default=64)
     parser.add_argument('--partial_start_index', type=int, default=0, help='the start index of variates for partial training, '
                                                                            'you can select [partial_start_index, min(enc_in + partial_start_index, N)]')
 
     args = parser.parse_args()
+
+    if args.incident:
+        if args.data != 'Fremont' or args.model != 'TopoJEPA':
+            parser.error('--incident currently requires --data Fremont --model TopoJEPA')
+        if args.exp_name == 'partial_train':
+            parser.error('--incident is not supported with --exp_name partial_train')
+        if args.text_weight > 0:
+            parser.error('--incident and --text_weight cannot share the optional batch slot')
+        if args.incident_sigma <= 0:
+            parser.error('--incident_sigma must be positive')
+        infer_incident_cardinalities(args)
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -129,7 +214,7 @@ if __name__ == '__main__':
     print(args)
 
     def build_setting(iteration):
-        return (
+        setting = (
             f'{args.model_id}_{args.model}_{args.data}'
             f'_ft{args.features}_sl{args.seq_len}_ll{args.label_len}'
             f'_pl{args.pred_len}_dm{args.d_model}_nh{args.n_heads}'
@@ -139,8 +224,12 @@ if __name__ == '__main__':
             f'_{args.class_strategy}_{args.model_variant}'
             f'_jw{args.jepa_weight}_tw{args.topo_weight}'
             f'_textw{args.text_weight}_aw{args.alignment_weight}'
-            f'_gnn{int(args.use_gnn)}_{iteration}'
+            f'_gnn{int(args.use_gnn)}'
         )
+        if args.incident:
+            setting += (f'_incident_s{args.incident_sigma}'
+                        f'_scale{args.incident_scale}')
+        return f'{setting}_{iteration}'
 
     if args.exp_name == 'partial_train': # See Figure 8 of our paper, for the detail
         Exp = Exp_Long_Term_Forecast_Partial

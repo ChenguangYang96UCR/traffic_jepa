@@ -11,6 +11,177 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
+class Dataset_Fremont_NPY(Dataset):
+    """Reader for the model-ready Fremont incident windows.
+
+    Traffic remains the forecasting input and target.  Incident context is
+    returned only when ``use_incident`` is enabled, preserving the original
+    traffic-only data contract by default.
+    """
+
+    def __init__(self, root_path, flag='train', size=None,
+                 features='M', data_path=None, target=None, scale=False,
+                 timeenc=0, freq='t', traffic_feature=0,
+                 use_time_features=False,
+                 use_incident=False,
+                 file_pattern='incident_{flag}.npy'):
+        if size is None:
+            size = [12, 6, 12]
+        self.seq_len = size[0]
+        self.label_len = size[1]
+        self.pred_len = size[2]
+        self.features = features
+        self.scale = False
+        self.traffic_feature = traffic_feature
+        self.use_time_features = use_time_features
+        self.use_incident = use_incident
+        self.flag = flag
+
+        if flag not in ('train', 'val', 'test'):
+            raise ValueError(
+                'Dataset_Fremont_NPY supports train/val/test only; '
+                f'got {flag!r}')
+        if features != 'M':
+            raise ValueError(
+                'Fremont traffic-only data predicts all sensor nodes; '
+                "use --features M")
+
+        filename = file_pattern.format(flag=flag)
+        data_file = os.path.join(root_path, filename)
+        if not os.path.exists(data_file):
+            raise FileNotFoundError(f'Fremont split not found: {data_file}')
+        self.samples = np.load(data_file, allow_pickle=True)
+        if len(self.samples) == 0:
+            raise ValueError(f'No samples found in {data_file}')
+        self._validate_sample(self.samples[0], 0)
+
+    def _validate_sample(self, sample, index):
+        if not isinstance(sample, dict):
+            raise TypeError(
+                f'Fremont sample {index} must be a dict, got {type(sample)}')
+        missing = [key for key in ('x_data', 'y_data') if key not in sample]
+        if self.use_incident:
+            missing.extend(key for key in (
+                'incident_features', 'incident_position',
+                'incident_distances') if key not in sample)
+        if missing:
+            raise KeyError(f'Fremont sample {index} is missing {missing}')
+
+        x_data = np.asarray(sample['x_data'])
+        y_data = np.asarray(sample['y_data'])
+        if x_data.ndim != 3 or y_data.ndim != 3:
+            raise ValueError(
+                f'Fremont sample {index} must contain [time,node,feature] '
+                f'arrays; got x={x_data.shape}, y={y_data.shape}')
+        if x_data.shape[0] != self.seq_len:
+            raise ValueError(
+                f'Fremont sample {index} has x length {x_data.shape[0]}, '
+                f'but --seq_len is {self.seq_len}')
+        if y_data.shape[0] < self.pred_len:
+            raise ValueError(
+                f'Fremont sample {index} has y length {y_data.shape[0]}, '
+                f'but --pred_len is {self.pred_len}')
+        if x_data.shape[1] != y_data.shape[1]:
+            raise ValueError(
+                f'Fremont sample {index} node mismatch: '
+                f'x={x_data.shape[1]}, y={y_data.shape[1]}')
+        if not 0 <= self.traffic_feature < min(x_data.shape[2], y_data.shape[2]):
+            raise ValueError(
+                f'--fremont_traffic_feature {self.traffic_feature} is out of '
+                f'range for x={x_data.shape}, y={y_data.shape}')
+        if self.use_time_features and min(x_data.shape[2], y_data.shape[2]) < 3:
+            raise ValueError(
+                '--fremont_use_time_features requires feature channels 1 and 2')
+        if self.use_incident:
+            distances = np.asarray(sample['incident_distances'])
+            if distances.shape != (x_data.shape[1], 3):
+                raise ValueError(
+                    f'Fremont sample {index} incident_distances must have '
+                    f'shape ({x_data.shape[1]}, 3), got {distances.shape}. '
+                    'When inducing Fremont from Alameda, subset distances '
+                    'with the same node indices as x_data/y_data.')
+
+    @staticmethod
+    def _incident_features(features):
+        if isinstance(features, dict):
+            features = [
+                features.get('Incident Time', 0.0),
+                features.get('Description', 0),
+                features.get('Type', 0),
+                features.get('Holiday', 0),
+            ]
+        features = np.asarray(features, dtype=np.float32)
+        if features.shape != (4,):
+            raise ValueError(
+                'incident_features must be a four-element array or a dict '
+                'containing Incident Time, Description, Type, and Holiday; '
+                f'got shape {features.shape}')
+        return features
+
+    @staticmethod
+    def _time_marks(data, sample_index):
+        # XTraffic repeats time-of-day/day-of-week channels for every sensor.
+        marks = np.asarray(data[:, 0, 1:3], dtype=np.float32)
+        repeated = np.broadcast_to(marks[:, None, :], data[:, :, 1:3].shape)
+        if not np.allclose(data[:, :, 1:3], repeated, equal_nan=True):
+            raise ValueError(
+                f'Fremont sample {sample_index} has inconsistent temporal '
+                'channels across sensors')
+        return marks
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+        self._validate_sample(sample, index)
+        x_raw = np.asarray(sample['x_data'], dtype=np.float32)
+        y_raw = np.asarray(sample['y_data'], dtype=np.float32)
+
+        seq_x = x_raw[:, :, self.traffic_feature]
+        future_y = y_raw[:self.pred_len, :, self.traffic_feature]
+        label_y = seq_x[-self.label_len:] if self.label_len else seq_x[:0]
+        seq_y = np.concatenate([label_y, future_y], axis=0)
+
+        if not np.isfinite(seq_x).all() or not np.isfinite(seq_y).all():
+            raise ValueError(f'Non-finite traffic value in Fremont sample {index}')
+
+        if self.use_time_features:
+            x_mark = self._time_marks(x_raw, index)
+            future_mark = self._time_marks(y_raw[:self.pred_len], index)
+            label_mark = x_mark[-self.label_len:] if self.label_len else x_mark[:0]
+            y_mark = np.concatenate([label_mark, future_mark], axis=0)
+        else:
+            # Empty covariate matrices keep the shared training API while
+            # adding no non-traffic tokens to DataEmbedding_inverted.
+            x_mark = np.empty((self.seq_len, 0), dtype=np.float32)
+            y_mark = np.empty(
+                (self.label_len + self.pred_len, 0), dtype=np.float32)
+
+        if not self.use_incident:
+            return seq_x, seq_y, x_mark, y_mark
+
+        incident_features = self._incident_features(
+            sample['incident_features'])
+        incident_position = np.asarray(
+            sample['incident_position'], dtype=np.int64)
+        incident_distances = np.asarray(
+            sample['incident_distances'], dtype=np.float32)
+        if not np.isfinite(incident_features).all():
+            raise ValueError(
+                f'Non-finite incident feature in Fremont sample {index}')
+        if not np.isfinite(incident_distances).all():
+            raise ValueError(
+                f'Non-finite incident distance in Fremont sample {index}')
+        return (seq_x, seq_y, x_mark, y_mark, incident_features,
+                incident_position, incident_distances)
+
+    def __len__(self):
+        return len(self.samples)
+
+    @staticmethod
+    def inverse_transform(data):
+        # Released incident windows are already normalized.
+        return data
+
+
 class Dataset_ETT_hour(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
@@ -565,84 +736,3 @@ class Dataset_Pred(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
-
-
-class Dataset_Incident(Dataset):
-    """Load pre-windowed IGSTGNN incident samples."""
-
-    def __init__(
-        self,
-        root_path,
-        flag="train",
-        size=None,
-        features="M",
-        data_path="incident_{flag}.npy",
-        target=None,
-        scale=False,
-        timeenc=0,
-        freq="t",
-        **kwargs,
-    ):
-        self.seq_len = size[0]
-        self.label_len = size[1]
-        self.pred_len = size[2]
-        self.future_len = size[3]
-
-        file_name = data_path.format(flag=flag)
-        file_path = os.path.join(root_path, file_name)
-
-        self.samples = np.load(file_path, allow_pickle=True)
-        self.scale = False
-
-        first_x = np.asarray(self.samples[0]["x_data"])
-        first_y = np.asarray(self.samples[0]["y_data"])
-
-        if self.seq_len > first_x.shape[0]:
-            raise ValueError(
-                f"seq_len={self.seq_len} exceeds history length "
-                f"{first_x.shape[0]}"
-            )
-
-        if self.future_len > first_y.shape[0]:
-            raise ValueError(
-                f"future_len={self.future_len} exceeds future length "
-                f"{first_y.shape[0]}"
-            )
-
-    def __getitem__(self, index):
-        sample = self.samples[index]
-
-        # Channel 0 is the traffic value.
-        history = np.asarray(
-            sample["x_data"], dtype=np.float32
-        )[-self.seq_len:, :, 0]
-
-        future = np.asarray(
-            sample["y_data"], dtype=np.float32
-        )[:self.future_len, :, 0]
-
-        decoder_values = np.concatenate(
-            [history[-self.label_len:], future],
-            axis=0,
-        )
-
-        # Empty time markers prevent additional covariate tokens.
-        history_mark = np.empty(
-            (history.shape[0], 0), dtype=np.float32
-        )
-        decoder_mark = np.empty(
-            (decoder_values.shape[0], 0), dtype=np.float32
-        )
-
-        return (
-            history,
-            decoder_values,
-            history_mark,
-            decoder_mark,
-        )
-
-    def __len__(self):
-        return len(self.samples)
-
-    def inverse_transform(self, data):
-        return data

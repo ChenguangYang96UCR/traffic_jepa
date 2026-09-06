@@ -7,6 +7,7 @@ from layers.Embed import DataEmbedding_inverted
 import numpy as np
 import copy
 import os
+import math
 
 
 class SimpleGraphEncoder(nn.Module):
@@ -28,6 +29,105 @@ class SimpleGraphEncoder(nn.Module):
         return hidden
 
 
+class IncidentContextFusion(nn.Module):
+    """IGSTGNN-style node-specific incident conditioning for JEPA tokens."""
+
+    def __init__(self, hidden_dim, num_descriptions=2048, num_types=64,
+                 num_positions=12, dropout=0.1):
+        super().__init__()
+        self.position_embedding = nn.Embedding(num_positions, 8)
+        self.description_embedding = nn.Embedding(num_descriptions, 32)
+        self.type_embedding = nn.Embedding(num_types, 8)
+        self.holiday_embedding = nn.Embedding(2, 4)
+        self.incident_fusion = nn.Sequential(
+            nn.Linear(8 + 32 + 8 + 4, 64),
+            nn.GELU(),
+            nn.Linear(64, hidden_dim),
+        )
+        self.query = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.key = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.value = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.distance_encoder = nn.Sequential(
+            nn.Linear(3, 32),
+            nn.GELU(),
+            nn.Linear(32, hidden_dim),
+        )
+        self.fusion = nn.Sequential(
+            nn.Linear(2 * hidden_dim, 64),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, hidden_dim),
+        )
+        self.norm = nn.LayerNorm(hidden_dim)
+
+    @staticmethod
+    def _index(values, embedding, name):
+        values = values.long()
+        if torch.any(values < 0) or torch.any(values >= embedding.num_embeddings):
+            lower = int(values.min().item())
+            upper = int(values.max().item())
+            raise ValueError(
+                f'{name} indices [{lower}, {upper}] exceed embedding range '
+                f'[0, {embedding.num_embeddings - 1}]. Adjust the matching '
+                'incident cardinality argument.')
+        return values
+
+    def forward(self, variable_tokens, incident_data):
+        features = incident_data['features']
+        positions = incident_data['position']
+        distances = incident_data['distances']
+        if features.ndim != 2 or features.shape[-1] != 4:
+            raise ValueError(
+                f'incident features must be [batch,4], got {features.shape}')
+        if distances.ndim != 3 or distances.shape[1] != variable_tokens.shape[1] or distances.shape[2] != 3:
+            raise ValueError(
+                'incident distances must be [batch,node,3] and match the '
+                f'JEPA variables; got {distances.shape} for '
+                f'{variable_tokens.shape[1]} variables')
+
+        # Match the released IGSTGNN implementation: the first element
+        # (Incident Time) is loaded but the categorical embedding uses
+        # Description, Type, Holiday, plus incident_position.
+        descriptions = self._index(
+            features[:, 1], self.description_embedding, 'Description')
+        types = self._index(features[:, 2], self.type_embedding, 'Type')
+        holidays = self._index(
+            features[:, 3], self.holiday_embedding, 'Holiday')
+        positions = self._index(
+            positions.reshape(-1), self.position_embedding,
+            'incident_position')
+        incident_embedding = self.incident_fusion(torch.cat([
+            self.position_embedding(positions),
+            self.description_embedding(descriptions),
+            self.type_embedding(types),
+            self.holiday_embedding(holidays),
+        ], dim=-1))
+
+        distance_mask = distances.abs().sum(dim=-1, keepdim=True) > 0
+        # A cropped-city sample may have no sensor spatially associated with
+        # its incident. IGSTGNN treats that as zero incident context instead
+        # of rejecting the sample.
+        distance_context = F.softmax(
+            self.distance_encoder(distances), dim=1)
+        keys = self.key(incident_embedding).unsqueeze(1)
+        values = self.value(incident_embedding).unsqueeze(1).expand_as(
+            variable_tokens)
+        semantic_logits = (
+            self.query(variable_tokens) * keys).sum(dim=-1, keepdim=True)
+        semantic_logits = semantic_logits / math.sqrt(variable_tokens.shape[-1])
+        semantic_attention = F.softmax(
+            semantic_logits.masked_fill(~distance_mask, -1e7), dim=1)
+        semantic_attention = semantic_attention * distance_mask
+        fused_weights = self.fusion(torch.cat([
+            semantic_attention.expand_as(variable_tokens), distance_context
+        ], dim=-1))
+        fused_weights = F.softmax(
+            fused_weights.masked_fill(~distance_mask, -1e7), dim=1)
+        fused_weights = fused_weights * distance_mask
+        incident_context = fused_weights * values
+        return self.norm(variable_tokens + incident_context), incident_context
+
+
 class Model(nn.Module):
 
     def __init__(self, configs):
@@ -43,6 +143,9 @@ class Model(nn.Module):
         self.text_embed_dim = getattr(configs, 'text_embed_dim', 512)
         self.use_gnn = bool(getattr(configs, 'use_gnn', False))
         self.alignment_weight = getattr(configs, 'alignment_weight', 0.0)
+        self.use_incident = bool(getattr(configs, 'incident', False))
+        self.incident_scale = float(getattr(configs, 'incident_scale', 1.0))
+        self.incident_sigma = float(getattr(configs, 'incident_sigma', 1.0))
         if self.alignment_weight > 0 and not self.use_gnn:
             raise ValueError('alignment_weight > 0 requires use_gnn=True')
         self.ema_momentum = getattr(configs, 'ema_momentum', 0.996)
@@ -81,6 +184,17 @@ class Model(nn.Module):
                 nn.Linear(configs.d_model, configs.d_model)
             )
         self.projector = nn.Linear(configs.d_model, configs.pred_len, bias=True)
+        if self.use_incident:
+            if self.incident_sigma <= 0:
+                raise ValueError('--incident_sigma must be positive')
+            self.incident_fusion = IncidentContextFusion(
+                configs.d_model,
+                num_descriptions=getattr(
+                    configs, 'incident_num_descriptions', 2048),
+                num_types=getattr(configs, 'incident_num_types', 64),
+                num_positions=getattr(configs, 'incident_num_positions', 12),
+                dropout=configs.dropout)
+            self.incident_output = nn.Linear(configs.d_model, 1, bias=False)
 
 
         if self.model_variant == 'jepa':
@@ -170,23 +284,52 @@ class Model(nn.Module):
                     target_param.data.mul_(self.ema_momentum).add_(
                         online_param.data, alpha=1.0 - self.ema_momentum)
 
+    def _fuse_incident(self, representation, num_variables, incident_data):
+        if not self.use_incident:
+            return representation, None
+        if incident_data is None:
+            raise ValueError('--incident requires incident data in every batch')
+        variables = representation[:, :num_variables, :]
+        variables, incident_context = self.incident_fusion(
+            variables, incident_data)
+        representation = torch.cat(
+            [variables, representation[:, num_variables:, :]], dim=1)
+        return representation, incident_context
+
+    def _incident_decay(self, incident_context, pred_len):
+        if incident_context is None:
+            return None
+        steps = torch.arange(
+            1, pred_len + 1, dtype=incident_context.dtype,
+            device=incident_context.device)
+        decay = torch.exp(
+            -(steps ** 2) / (2.0 * self.incident_sigma ** 2))
+        node_effect = self.incident_output(incident_context).squeeze(-1)
+        return self.incident_scale * decay.view(1, pred_len, 1) * node_effect.unsqueeze(1)
+
     def forward_with_jepa(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
-                          target_x, target_mark, target_text=None):
+                          target_x, target_mark, target_text=None,
+                          incident_data=None):
         if self.model_variant != 'jepa' or (self.jepa_weight <= 0 and
                                             self.topo_weight <= 0 and
                                             self.text_weight <= 0 and
                                             self.alignment_weight <= 0):
             zero = x_enc.new_zeros(())
-            return self.forward(x_enc, x_mark_enc, x_dec, x_mark_dec), zero, zero, zero, zero
+            return self.forward(
+                x_enc, x_mark_enc, x_dec, x_mark_dec,
+                incident_data=incident_data), zero, zero, zero, zero
 
         online_input, means, stdev = self._normalize_with_stats(x_enc)
         num_variables = x_enc.shape[-1]
         online_context, attns = self._encode(online_input, x_mark_enc)
         online_context, graph_variables, transformer_variables = self._fuse_graph(
             online_context, online_input, target=False)
+        online_context, incident_context = self._fuse_incident(
+            online_context, num_variables, incident_data)
         predicted_rep = self.predictor(online_context)
         forecast = self._project_representation(
-            predicted_rep, num_variables, means, stdev)
+            predicted_rep, num_variables, means, stdev,
+            incident_context=incident_context)
 
         target_input = self._normalized_view(target_x)
         with torch.no_grad():
@@ -199,8 +342,10 @@ class Model(nn.Module):
         jepa_loss = F.mse_loss(
             F.layer_norm(predicted_variables, predicted_variables.shape[-1:]),
             F.layer_norm(target_variables, target_variables.shape[-1:]))
-        topo_loss = self._topology_wasserstein_loss(
-            predicted_variables, target_variables)
+        topo_loss = x_enc.new_zeros(())
+        if self.topo_weight > 0:
+            topo_loss = self._topology_wasserstein_loss(
+                predicted_variables, target_variables)
         text_loss = x_enc.new_zeros(())
         if self.text_weight > 0:
             if target_text is None:
@@ -280,15 +425,21 @@ class Model(nn.Module):
         return centered / stdev, means, stdev
 
     def _project_representation(self, representation, num_variables,
-                                means=None, stdev=None):
+                                means=None, stdev=None,
+                                incident_context=None):
         output = self.projector(representation).permute(0, 2, 1)
         output = output[:, :, :num_variables]
+        incident_effect = self._incident_decay(
+            incident_context, output.shape[1])
+        if incident_effect is not None:
+            output = output + incident_effect
         if self.use_norm:
             output = output * stdev[:, 0, :].unsqueeze(1)
             output = output + means[:, 0, :].unsqueeze(1)
         return output
 
-    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
+                 incident_data=None):
         x_enc, means, stdev = self._normalize_with_stats(x_enc)
         _, _, N = x_enc.shape # B L N
         # B: batch_size;    E: d_model; 
@@ -299,17 +450,24 @@ class Model(nn.Module):
         # B L N -> B N E                (B L N -> B L E in the vanilla Transformer)
         enc_out, attns = self._encode(x_enc, x_mark_enc)
         enc_out, _, _ = self._fuse_graph(enc_out, x_enc, target=False)
+        enc_out, incident_context = self._fuse_incident(
+            enc_out, N, incident_data)
         if self.model_variant in ('predictor', 'jepa'):
             enc_out = self.predictor(enc_out)
 
         # B N E -> B N S -> B S N
-        dec_out = self._project_representation(enc_out, N, means, stdev)
+        dec_out = self._project_representation(
+            enc_out, N, means, stdev,
+            incident_context=incident_context)
 
         return dec_out, attns
 
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        dec_out, attns = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None,
+                incident_data=None):
+        dec_out, attns = self.forecast(
+            x_enc, x_mark_enc, x_dec, x_mark_dec,
+            incident_data=incident_data)
         
         if self.output_attention:
             return dec_out[:, -self.pred_len:, :], attns

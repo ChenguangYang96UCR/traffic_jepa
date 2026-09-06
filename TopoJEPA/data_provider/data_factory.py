@@ -1,5 +1,5 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Solar, Dataset_PEMS, \
-    Dataset_Pred, Dataset_Incident
+    Dataset_Pred, Dataset_Fremont_NPY
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -10,7 +10,7 @@ data_dict = {
     'Solar': Dataset_Solar,
     'PEMS': Dataset_PEMS,
     'custom': Dataset_Custom,
-    "incident": Dataset_Incident,
+    'Fremont': Dataset_Fremont_NPY,
 }
 
 
@@ -48,6 +48,14 @@ def data_provider(args, flag):
     )
     if Data is Dataset_Custom:
         data_kwargs['text_embedding_dir'] = getattr(args, 'text_embedding_dir', '')
+    elif Data is Dataset_Fremont_NPY:
+        data_kwargs['traffic_feature'] = getattr(
+            args, 'fremont_traffic_feature', 0)
+        data_kwargs['use_time_features'] = getattr(
+            args, 'fremont_use_time_features', False)
+        data_kwargs['use_incident'] = getattr(args, 'incident', False)
+        data_kwargs['file_pattern'] = getattr(
+            args, 'fremont_file_pattern', 'incident_{flag}.npy')
     data_set = Data(**data_kwargs)
     print(flag, len(data_set))
     data_loader = DataLoader(

@@ -36,12 +36,40 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         criterion = nn.MSELoss()
         return criterion
 
+    def _unpack_batch(self, batch):
+        batch_x, batch_y, batch_x_mark, batch_y_mark = batch[:4]
+        incident_data = None
+        target_text = None
+        if getattr(self.args, 'incident', False):
+            if len(batch) < 7:
+                raise ValueError(
+                    '--incident expects incident_features, incident_position, '
+                    'and incident_distances after the four forecasting tensors')
+            incident_data = {
+                'features': batch[4].float().to(self.device),
+                'position': batch[5].long().to(self.device),
+                'distances': batch[6].float().to(self.device),
+            }
+        elif len(batch) > 4:
+            target_text = batch[4].float().to(self.device)
+        return (batch_x, batch_y, batch_x_mark, batch_y_mark,
+                incident_data, target_text)
+
+    def _model_forward(self, batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                       incident_data):
+        if incident_data is not None:
+            return self.model(
+                batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                incident_data=incident_data)
+        return self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
     def vali(self, vali_data, vali_loader, criterion):
         total_loss = []
         self.model.eval()
         with torch.no_grad():
             for i, batch in enumerate(vali_loader):
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch[:4]
+                (batch_x, batch_y, batch_x_mark, batch_y_mark,
+                 incident_data, _) = self._unpack_batch(batch)
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
                 if 'PEMS' in self.args.data or 'Solar' in self.args.data:
@@ -58,14 +86,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)[0]
                         else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)
                 else:
                     if self.args.output_attention:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                        outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)[0]
                     else:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
                 batch_y = batch_y[:, self.args.label_len:self.args.label_len + self.args.pred_len, f_dim:].to(self.device)
@@ -111,8 +139,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
             self.model.train()
             epoch_time = time.time()
             for i, batch in enumerate(train_loader):
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch[:4]
-                target_text = batch[4].float().to(self.device) if len(batch) > 4 else None
+                (batch_x, batch_y, batch_x_mark, batch_y_mark,
+                 incident_data, target_text) = self._unpack_batch(batch)
                 iter_count += 1
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
@@ -146,11 +174,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                             target_mark = batch_y_mark[:, self.args.label_len:self.args.label_len + self.args.seq_len, :] if batch_y_mark is not None else None
                             outputs, jepa_loss, topo_loss, text_loss, alignment_loss = core_model.forward_with_jepa(
                                 batch_x, batch_x_mark, dec_inp, batch_y_mark,
-                                target_x, target_mark, target_text)
+                                target_x, target_mark, target_text,
+                                incident_data=incident_data)
                         elif self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)[0]
                         else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)
 
                         f_dim = -1 if self.args.features == 'MS' else 0
                         outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -167,11 +196,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                         target_mark = batch_y_mark[:, self.args.label_len:self.args.label_len + self.args.seq_len, :] if batch_y_mark is not None else None
                         outputs, jepa_loss, topo_loss, text_loss, alignment_loss = core_model.forward_with_jepa(
                             batch_x, batch_x_mark, dec_inp, batch_y_mark,
-                            target_x, target_mark, target_text)
+                            target_x, target_mark, target_text,
+                            incident_data=incident_data)
                     elif self.args.output_attention:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                        outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)[0]
                     else:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)
 
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
@@ -266,7 +296,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.eval()
         with torch.no_grad():
             for i, batch in enumerate(test_loader):
-                batch_x, batch_y, batch_x_mark, batch_y_mark = batch[:4]
+                (batch_x, batch_y, batch_x_mark, batch_y_mark,
+                 incident_data, _) = self._unpack_batch(batch)
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
 
@@ -284,15 +315,15 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 if self.args.use_amp:
                     with torch.cuda.amp.autocast():
                         if self.args.output_attention:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                            outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)[0]
                         else:
-                            outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                            outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)
                 else:
                     if self.args.output_attention:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                        outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)[0]
 
                     else:
-                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                        outputs = self._model_forward(batch_x, batch_x_mark, dec_inp, batch_y_mark, incident_data)
 
                 f_dim = -1 if self.args.features == 'MS' else 0
                 outputs = outputs[:, -self.args.pred_len:, f_dim:]
