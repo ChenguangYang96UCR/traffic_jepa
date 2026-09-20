@@ -1,4 +1,7 @@
 import os
+import csv
+import importlib
+import sys
 import numpy as np
 import pandas as pd
 import torch
@@ -9,6 +12,29 @@ from utils.text_embeddings import clip_cache_path
 import warnings
 
 warnings.filterwarnings('ignore')
+
+
+def enable_numpy_pickle_compatibility():
+    """Let NumPy 1.x load trusted object arrays written by NumPy 2.x.
+
+    NumPy 2 stores internal pickle references below ``numpy._core`` whereas
+    NumPy 1 exposes the same implementation below ``numpy.core``. Registering
+    aliases avoids forcing a NumPy upgrade in the established training env.
+    """
+    try:
+        importlib.import_module('numpy._core')
+        return
+    except ModuleNotFoundError:
+        pass
+
+    numpy_core = importlib.import_module('numpy.core')
+    sys.modules.setdefault('numpy._core', numpy_core)
+    for module_name in ('multiarray', 'numeric', '_multiarray_umath', 'umath'):
+        old_module = importlib.import_module(f'numpy.core.{module_name}')
+        sys.modules.setdefault(f'numpy._core.{module_name}', old_module)
+
+
+enable_numpy_pickle_compatibility()
 
 
 class Dataset_Fremont_NPY(Dataset):
@@ -24,7 +50,7 @@ class Dataset_Fremont_NPY(Dataset):
                  timeenc=0, freq='t', traffic_feature=0,
                  use_time_features=False,
                  use_incident=False,
-                 file_pattern='incident_{flag}.npy'):
+                 file_pattern='incident_{flag}.npy', node_indices=None):
         if size is None:
             size = [12, 6, 12]
         self.seq_len = size[0]
@@ -36,6 +62,13 @@ class Dataset_Fremont_NPY(Dataset):
         self.use_time_features = use_time_features
         self.use_incident = use_incident
         self.flag = flag
+        self.node_indices = (None if node_indices is None else
+                             np.asarray(node_indices, dtype=np.int64))
+        if self.node_indices is not None:
+            if (self.node_indices.ndim != 1 or not len(self.node_indices) or
+                    np.any(self.node_indices < 0) or
+                    len(np.unique(self.node_indices)) != len(self.node_indices)):
+                raise ValueError('node_indices must be a non-empty vector of unique non-negative indices')
 
         if flag not in ('train', 'val', 'test'):
             raise ValueError(
@@ -85,6 +118,11 @@ class Dataset_Fremont_NPY(Dataset):
             raise ValueError(
                 f'Fremont sample {index} node mismatch: '
                 f'x={x_data.shape[1]}, y={y_data.shape[1]}')
+        if (self.node_indices is not None and
+                int(self.node_indices.max()) >= x_data.shape[1]):
+            raise ValueError(
+                f'node selection reaches {int(self.node_indices.max())}, '
+                f'but sample {index} has only {x_data.shape[1]} nodes')
         if not 0 <= self.traffic_feature < min(x_data.shape[2], y_data.shape[2]):
             raise ValueError(
                 f'--fremont_traffic_feature {self.traffic_feature} is out of '
@@ -134,6 +172,9 @@ class Dataset_Fremont_NPY(Dataset):
         self._validate_sample(sample, index)
         x_raw = np.asarray(sample['x_data'], dtype=np.float32)
         y_raw = np.asarray(sample['y_data'], dtype=np.float32)
+        if self.node_indices is not None:
+            x_raw = x_raw[:, self.node_indices, :]
+            y_raw = y_raw[:, self.node_indices, :]
 
         seq_x = x_raw[:, :, self.traffic_feature]
         future_y = y_raw[:self.pred_len, :, self.traffic_feature]
@@ -180,6 +221,58 @@ class Dataset_Fremont_NPY(Dataset):
     def inverse_transform(data):
         # Released incident windows are already normalized.
         return data
+
+
+class Dataset_Alameda_Cities_NPY(Dataset_Fremont_NPY):
+    """Traffic windows restricted to selected Alameda County cities.
+
+    With the default arguments this selects every non-empty city except Fremont,
+    providing a disjoint sensor set for cross-city pretraining. Sample pairing
+    and the released train/validation/test boundaries remain unchanged.
+    """
+
+    def __init__(self, root_path, *args, cities='', exclude_cities='Fremont',
+                 sensors_file='sensors.csv', use_incident=False, **kwargs):
+        if use_incident:
+            raise ValueError('Cross-city pretraining is traffic-only; incident conditioning is unsupported')
+        sensor_path = os.path.join(root_path, sensors_file)
+        if not os.path.exists(sensor_path):
+            raise FileNotFoundError(f'Alameda sensor metadata not found: {sensor_path}')
+        with open(sensor_path, newline='', encoding='utf-8-sig') as handle:
+            reader = csv.DictReader(handle)
+            columns = list(reader.fieldnames or [])
+            rows = list(reader)
+        normalized = {
+            ''.join(ch for ch in str(column).lower() if ch.isalnum()): column
+            for column in columns
+        }
+        city_column = normalized.get('city')
+        if city_column is None:
+            raise ValueError(f'{sensor_path} has no City column; columns={columns}')
+
+        requested = {value.strip().casefold() for value in cities.split(',') if value.strip()}
+        excluded = {value.strip().casefold() for value in exclude_cities.split(',') if value.strip()}
+        if requested & excluded:
+            raise ValueError('The same city cannot be both included and excluded')
+        values = [str(row.get(city_column, '')).strip() for row in rows]
+        available = {value.casefold(): value for value in values if value}
+        missing = sorted(requested - set(available))
+        if missing:
+            raise ValueError(
+                f'Requested Alameda cities are absent: {missing}; '
+                f'available={sorted(available.values())}')
+        selected = [index for index, value in enumerate(values)
+                    if value and value.casefold() not in excluded and
+                    (not requested or value.casefold() in requested)]
+        if not selected:
+            raise ValueError('Alameda city filters selected zero sensors')
+        self.selected_cities = sorted({values[index] for index in selected})
+        self.sensor_indices = np.asarray(selected, dtype=np.int64)
+        super().__init__(root_path, *args, use_incident=False,
+                         node_indices=self.sensor_indices, **kwargs)
+        print('Alameda city pretraining selection: '
+              f'{len(self.selected_cities)} cities, {len(selected)} sensors; '
+              f'excluded={sorted(excluded)}')
 
 
 class Dataset_ETT_hour(Dataset):

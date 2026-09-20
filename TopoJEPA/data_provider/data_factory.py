@@ -1,5 +1,5 @@
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Solar, Dataset_PEMS, \
-    Dataset_Pred, Dataset_Fremont_NPY
+    Dataset_Pred, Dataset_Fremont_NPY, Dataset_Alameda_Cities_NPY
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -11,6 +11,7 @@ data_dict = {
     'PEMS': Dataset_PEMS,
     'custom': Dataset_Custom,
     'Fremont': Dataset_Fremont_NPY,
+    'AlamedaCities': Dataset_Alameda_Cities_NPY,
 }
 
 
@@ -48,7 +49,10 @@ def data_provider(args, flag):
     )
     if Data is Dataset_Custom:
         data_kwargs['text_embedding_dir'] = getattr(args, 'text_embedding_dir', '')
-    elif Data is Dataset_Fremont_NPY:
+    elif Data in (Dataset_Fremont_NPY, Dataset_Alameda_Cities_NPY):
+        adaptation = getattr(args, 'fremont_adaptation_root', '')
+        if adaptation and (flag == 'test' or args.training_stage == 'finetune'):
+            data_kwargs['root_path'] = adaptation
         data_kwargs['traffic_feature'] = getattr(
             args, 'fremont_traffic_feature', 0)
         data_kwargs['use_time_features'] = getattr(
@@ -56,6 +60,12 @@ def data_provider(args, flag):
         data_kwargs['use_incident'] = getattr(args, 'incident', False)
         data_kwargs['file_pattern'] = getattr(
             args, 'fremont_file_pattern', 'incident_{flag}.npy')
+        if Data is Dataset_Alameda_Cities_NPY:
+            data_kwargs['cities'] = getattr(args, 'alameda_cities', '')
+            data_kwargs['exclude_cities'] = getattr(
+                args, 'alameda_exclude_cities', 'Fremont')
+            data_kwargs['sensors_file'] = getattr(
+                args, 'alameda_sensors_file', 'sensors.csv')
     data_set = Data(**data_kwargs)
     print(flag, len(data_set))
     data_loader = DataLoader(

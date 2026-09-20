@@ -76,6 +76,13 @@ if __name__ == '__main__':
     parser.add_argument('--fremont_use_time_features', action='store_true',
                         help='also use Fremont time-of-day/day-of-week channels; '
                              'off means strictly traffic-only input')
+    parser.add_argument('--alameda_cities', type=str, default='',
+                        help='comma-separated cities to include for AlamedaCities; '
+                             'empty selects every non-excluded non-empty city')
+    parser.add_argument('--alameda_exclude_cities', type=str, default='Fremont',
+                        help='comma-separated cities excluded from AlamedaCities pretraining')
+    parser.add_argument('--alameda_sensors_file', type=str, default='sensors.csv',
+                        help='sensor metadata with a City column under root_path')
     parser.add_argument('--incident', action='store_true',
                         help='enable IGSTGNN-style incident conditioning for Fremont JEPA')
     parser.add_argument('--incident_scale', type=float, default=1.0,
@@ -94,6 +101,8 @@ if __name__ == '__main__':
     parser.add_argument('--freq', type=str, default='h',
                         help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
     parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+    parser.add_argument('--experiment_tag', type=str, default='',
+                        help='optional short, stable run name used for checkpoint/result directories')
 
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -130,6 +139,35 @@ if __name__ == '__main__':
     parser.add_argument('--log_interval', type=int, default=100,
                         help='iterations between detailed branch-loss logs')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
+    parser.add_argument('--training_stage', type=str, default='joint',
+                        choices=['joint', 'pretrain', 'finetune'],
+                        help='joint: legacy forecast+JEPA training; pretrain: '
+                             'forecast + weighted JEPA objective; finetune: supervised forecast '
+                             'training initialized from --pretrained_checkpoint')
+    parser.add_argument('--pretrained_checkpoint', type=str, default='',
+                        help='JEPA pretraining checkpoint used by the finetune stage')
+    parser.add_argument('--fremont_adaptation_root', default='',
+                        help='Verified former-test 60/20/20 split. Pretrain keeps original train/val.')
+    parser.add_argument('--eval_checkpoint', default='',
+                        help='Explicit weights for evaluation, allowing a new result tag')
+    parser.add_argument('--finetune_strategy', type=str, default='full',
+                        choices=['full', 'partial', 'frozen', 'gradual', 'lora'],
+                        help='parameters updated during the finetune stage')
+    parser.add_argument('--partial_unfreeze_layers', type=int, default=1,
+                        help='number of final online encoder layers unfrozen for partial finetuning; 0 trains the predictor/head only')
+    parser.add_argument('--lora_rank', type=int, default=8)
+    parser.add_argument('--lora_alpha', type=float, default=16.0)
+    parser.add_argument('--lora_dropout', type=float, default=0.0)
+    parser.add_argument('--lora_lr_scale', type=float, default=1.0,
+                        help='adapter LR multiplier; head uses learning_rate')
+    parser.add_argument('--gradual_head_epochs', type=int, default=2,
+                        help='initial predictor/head-only epochs')
+    parser.add_argument('--gradual_partial_epochs', type=int, default=3,
+                        help='subsequent epochs with final encoder layers unfrozen')
+    parser.add_argument('--encoder_lr_scale', type=float, default=0.1,
+                        help='encoder/predictor learning-rate multiplier during finetuning; the forecast head uses --learning_rate')
+    parser.add_argument('--keep_pretrained_head', action='store_true',
+                        help='legacy compatibility flag; fine-tuning always preserves the trained forecast head')
     parser.add_argument('--des', type=str, default='test', help='exp description')
     parser.add_argument('--loss', type=str, default='MSE', help='loss function')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
@@ -184,6 +222,63 @@ if __name__ == '__main__':
                                                                            'you can select [partial_start_index, min(enc_in + partial_start_index, N)]')
 
     args = parser.parse_args()
+    if args.fremont_adaptation_root:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'Preprocess'))
+        from split_fremont_adaptation import verify_split
+        if args.data != 'Fremont' or args.training_stage not in ('pretrain', 'finetune'):
+            parser.error('Adaptation root requires staged Fremont training')
+        verify_split(args.fremont_adaptation_root, args.root_path, args.fremont_file_pattern,
+                     args.fremont_traffic_feature, args.seq_len, args.pred_len)
+        if args.is_training and not args.experiment_tag:
+            parser.error('Use a new --experiment_tag for adaptation experiments')
+
+    if args.training_stage in ('pretrain', 'finetune'):
+        if args.exp_name != 'MTSF':
+            parser.error('Staged training requires --exp_name MTSF')
+        if args.model != 'TopoJEPA' or args.model_variant != 'jepa':
+            parser.error('--training_stage pretrain/finetune requires '
+                         '--model TopoJEPA --model_variant jepa')
+        if args.training_stage == 'finetune' and args.data != 'Fremont':
+            parser.error('Cross-city fine-tuning must use --data Fremont')
+    if args.training_stage == 'pretrain':
+        if args.data not in ('Fremont', 'AlamedaCities'):
+            parser.error('Staged JEPA pretraining supports Fremont or AlamedaCities')
+        if args.jepa_weight <= 0:
+            parser.error('--training_stage pretrain requires --jepa_weight > 0')
+        if args.pred_len < args.seq_len:
+            parser.error('JEPA pretraining currently requires '
+                         '--pred_len >= --seq_len so the target encoder '
+                         'receives a complete target window')
+    if args.training_stage == 'finetune' and args.is_training:
+        if not args.pretrained_checkpoint:
+            parser.error('--training_stage finetune requires '
+                         '--pretrained_checkpoint')
+        if not os.path.isfile(args.pretrained_checkpoint):
+            parser.error('pretrained checkpoint not found: '
+                         f'{args.pretrained_checkpoint}')
+    if args.partial_unfreeze_layers < 0:
+        parser.error('--partial_unfreeze_layers must be non-negative')
+    if args.finetune_strategy == 'lora':
+        import math
+        if args.training_stage != 'finetune':
+            parser.error('lora requires --training_stage finetune')
+        if (args.lora_rank <= 0 or not math.isfinite(args.lora_alpha) or
+                args.lora_alpha <= 0 or not 0 <= args.lora_dropout < 1 or
+                not math.isfinite(args.lora_lr_scale) or args.lora_lr_scale <= 0):
+            parser.error('Invalid LoRA rank, alpha, dropout or learning-rate scale')
+    if args.finetune_strategy == 'gradual':
+        if args.training_stage != 'finetune':
+            parser.error('gradual requires --training_stage finetune')
+        if min(args.gradual_head_epochs, args.gradual_partial_epochs) < 0:
+            parser.error('gradual epoch counts must be non-negative')
+        if args.train_epochs <= args.gradual_head_epochs + args.gradual_partial_epochs:
+            parser.error('train_epochs must leave at least one full-unfreezing epoch')
+        if not 1 <= args.partial_unfreeze_layers <= args.e_layers:
+            parser.error('gradual partial_unfreeze_layers must be in [1, e_layers]')
+    if not 0 < args.encoder_lr_scale <= 1:
+        parser.error('--encoder_lr_scale must be in (0, 1]')
 
     if args.incident:
         if args.data != 'Fremont' or args.model != 'TopoJEPA':
@@ -214,6 +309,8 @@ if __name__ == '__main__':
     print(args)
 
     def build_setting(iteration):
+        if args.experiment_tag:
+            return f'{args.experiment_tag}_{iteration}'
         setting = (
             f'{args.model_id}_{args.model}_{args.data}'
             f'_ft{args.features}_sl{args.seq_len}_ll{args.label_len}'
@@ -225,7 +322,17 @@ if __name__ == '__main__':
             f'_jw{args.jepa_weight}_tw{args.topo_weight}'
             f'_textw{args.text_weight}_aw{args.alignment_weight}'
             f'_gnn{int(args.use_gnn)}'
+            f'_stage{args.training_stage}'
         )
+        if args.training_stage == 'finetune':
+            setting += f'_{args.finetune_strategy}'
+            if args.finetune_strategy == 'lora':
+                setting += (f'_r{args.lora_rank}_a{args.lora_alpha}'
+                            f'_d{args.lora_dropout}_lr{args.lora_lr_scale}')
+            if args.finetune_strategy == 'gradual':
+                setting += (f'_h{args.gradual_head_epochs}'
+                            f'_p{args.gradual_partial_epochs}'
+                            f'_l{args.partial_unfreeze_layers}')
         if args.incident:
             setting += (f'_incident_s{args.incident_sigma}'
                         f'_scale{args.incident_scale}')
@@ -243,13 +350,28 @@ if __name__ == '__main__':
             setting = build_setting(ii)
 
             exp = Exp(args)  # set experiments
-            print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+            if args.fremont_adaptation_root:
+                from pathlib import Path
+                import json
+                out = Path(args.checkpoints) / setting
+                if out.exists() or (Path('results') / setting).exists():
+                    raise FileExistsError(f'Refusing to overwrite adaptation run: {setting}')
+                out.mkdir(parents=True)
+                (out / 'protocol.json').write_text(json.dumps(vars(args), indent=2))
+                (out / 'split_manifest.json').write_text(
+                    (Path(args.fremont_adaptation_root) / 'split_manifest.json').read_text())
+            print('>>>>>>>start {} : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(
+                args.training_stage, setting))
             exp.train(setting)
 
-            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting)
+            if args.training_stage == 'pretrain':
+                print('>>>>>>>evaluating pretraining : {}<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                exp.test_pretrain(setting)
+            else:
+                print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                exp.test(setting)
 
-            if args.do_predict:
+            if args.do_predict and args.training_stage != 'pretrain':
                 print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
                 exp.predict(setting, True)
 
@@ -259,6 +381,29 @@ if __name__ == '__main__':
         setting = build_setting(ii)
 
         exp = Exp(args)  # set experiments
-        print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(setting, test=1)
+        if args.eval_checkpoint:
+            if args.fremont_adaptation_root and os.path.exists(os.path.join('results', setting)):
+                raise FileExistsError(f'Refusing to overwrite evaluation: {setting}')
+            weights = torch.load(args.eval_checkpoint, map_location=exp.device)
+            weights = {(k[7:] if k.startswith('module.') else k): v for k, v in weights.items()}
+            exp._core_model().load_state_dict(weights, strict=True)
+            exp.test(setting)
+            if args.fremont_adaptation_root:
+                import json
+                from pathlib import Path
+                from split_fremont_adaptation import sha256
+                out = Path('results') / setting
+                (out / 'split_manifest.json').write_text(
+                    (Path(args.fremont_adaptation_root) / 'split_manifest.json').read_text())
+                (out / 'evaluation.json').write_text(json.dumps(dict(
+                    checkpoint=str(Path(args.eval_checkpoint).resolve()),
+                    checkpoint_sha256=sha256(args.eval_checkpoint),
+                    arguments=vars(args)), indent=2))
+            raise SystemExit(0)
+        if args.training_stage == 'pretrain':
+            print('>>>>>>>evaluating pretraining : {}<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            exp.test_pretrain(setting, load=True)
+        else:
+            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            exp.test(setting, test=1)
         torch.cuda.empty_cache()

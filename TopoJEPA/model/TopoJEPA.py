@@ -284,6 +284,118 @@ class Model(nn.Module):
                     target_param.data.mul_(self.ema_momentum).add_(
                         online_param.data, alpha=1.0 - self.ema_momentum)
 
+    @torch.no_grad()
+    def copy_target_encoder_to_online(self):
+        """Initialize the deployable encoder from the EMA pretraining teacher."""
+        if self.model_variant != 'jepa':
+            raise ValueError('EMA transfer requires model_variant=jepa')
+        self.enc_embedding.load_state_dict(self.target_embedding.state_dict())
+        self.encoder.load_state_dict(self.target_encoder.state_dict())
+        if self.use_gnn:
+            self.graph_encoder.load_state_dict(
+                self.target_graph_encoder.state_dict())
+            self.fusion_gate.load_state_dict(
+                self.target_fusion_gate.state_dict())
+
+    def reset_forecast_head(self):
+        """Reset the supervised head so it cannot inherit forecast training."""
+        nn.init.xavier_uniform_(self.projector.weight)
+        if self.projector.bias is not None:
+            nn.init.zeros_(self.projector.bias)
+        if self.use_incident:
+            nn.init.xavier_uniform_(self.incident_output.weight)
+
+    def configure_pretraining(self):
+        """Train the online representation and forecasting path together."""
+        if self.model_variant != 'jepa':
+            raise ValueError('JEPA pretraining requires model_variant=jepa')
+        self.requires_grad_(True)
+        self.text_predictor.requires_grad_(self.text_weight > 0)
+        self.projector.requires_grad_(True)
+        if self.use_incident:
+            self.incident_output.requires_grad_(True)
+        for module in (self.target_embedding, self.target_encoder):
+            module.requires_grad_(False)
+        if self.use_gnn:
+            for module in (self.target_graph_encoder,
+                           self.target_fusion_gate):
+                module.requires_grad_(False)
+
+    def configure_lora(self, rank=8, alpha=16.0, dropout=0.0):
+        """Adapt only online attention Q/V and the supervised forecast head."""
+        from layers.lora import LoRALinear
+        self.requires_grad_(False)
+        for layer in self.encoder.attn_layers:
+            for name in ('query_projection', 'value_projection'):
+                base = getattr(layer.attention, name)
+                if isinstance(base, LoRALinear):
+                    raise ValueError('LoRA has already been installed')
+                setattr(layer.attention, name, LoRALinear(base, rank, alpha, dropout))
+        self.projector.requires_grad_(True)
+        if self.use_incident:
+            self.incident_output.requires_grad_(True)
+        self._lora_enabled = True
+
+    def configure_finetuning(self, strategy='full', unfreeze_layers=1):
+        """Select trainable online parameters for full or partial fine-tuning."""
+        if strategy not in ('full', 'partial', 'frozen'):
+            raise ValueError(f'Unknown finetune strategy: {strategy}')
+        if unfreeze_layers < 0:
+            raise ValueError('unfreeze_layers must be non-negative')
+
+        for parameter in self.parameters():
+            parameter.requires_grad = strategy == 'full'
+
+        # EMA modules are never optimized during downstream supervised training.
+        for module in (self.target_embedding, self.target_encoder):
+            module.requires_grad_(False)
+        if self.use_gnn:
+            for module in (self.target_graph_encoder,
+                           self.target_fusion_gate):
+                module.requires_grad_(False)
+
+        if strategy in ('partial', 'frozen'):
+            # Start frozen, then expose the task head, latent predictor and the
+            # final N Transformer blocks.  With N=0 this is a head/predictor probe.
+            for parameter in self.parameters():
+                parameter.requires_grad = False
+            self.projector.requires_grad_(True)
+            if self.use_incident:
+                self.incident_output.requires_grad_(True)
+            if strategy == 'frozen':
+                return
+
+            self.predictor.requires_grad_(True)
+            if self.use_incident:
+                self.incident_fusion.requires_grad_(True)
+            if self.use_gnn:
+                self.graph_encoder.requires_grad_(True)
+                self.fusion_gate.requires_grad_(True)
+            layers = self.encoder.attn_layers
+            for layer in layers[max(0, len(layers) - unfreeze_layers):]:
+                layer.requires_grad_(True)
+            if unfreeze_layers > 0 and self.encoder.norm is not None:
+                self.encoder.norm.requires_grad_(True)
+        self.text_predictor.requires_grad_(False)
+
+    def train(self, mode=True):
+        super().train(mode)
+        if getattr(self, '_lora_enabled', False):
+            # Keep pretrained feature extraction deterministic, while allowing
+            # explicitly configured adapter dropout during LoRA training.
+            from layers.lora import LoRALinear
+            self.encoder.eval()
+            for module in self.encoder.modules():
+                if isinstance(module, LoRALinear):
+                    module.dropout.train(mode)
+        # Frozen feature extractors must also disable dropout during adaptation.
+        for module in self.modules():
+            if module is not self:
+                parameters = list(module.parameters())
+                if parameters and not any(p.requires_grad for p in parameters):
+                    module.eval()
+        return self
+
     def _fuse_incident(self, representation, num_variables, incident_data):
         if not self.use_incident:
             return representation, None

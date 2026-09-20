@@ -19,6 +19,12 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
     def _build_model(self):
         model = self.model_dict[self.args.model].Model(self.args).float()
+        # Training first loads the plain pretrained model strictly, then wraps
+        # Q/V. Evaluation reconstructs the wrapped checkpoint architecture here.
+        if (self.args.training_stage == 'finetune' and
+                self.args.finetune_strategy == 'lora' and not self.args.is_training):
+            model.configure_lora(self.args.lora_rank, self.args.lora_alpha,
+                                 self.args.lora_dropout)
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -29,8 +35,98 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         return data_set, data_loader
 
     def _select_optimizer(self):
-        model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
-        return model_optim
+        gradual = (self.args.training_stage == 'finetune' and
+                   self.args.finetune_strategy == 'gradual')
+        if gradual:
+            # Register every eventual online parameter once. Frozen parameters
+            # have grad=None, so Adam will skip them until their phase starts.
+            self._core_model().configure_finetuning('full')
+        trainable = [(name, parameter) for name, parameter in
+                     self.model.named_parameters() if parameter.requires_grad]
+        if gradual:
+            self._configure_gradual_epoch(0)
+        if not trainable:
+            raise ValueError('No trainable parameters were selected')
+
+        if self.args.training_stage != 'finetune':
+            return optim.Adam(
+                [parameter for _, parameter in trainable],
+                lr=self.args.learning_rate)
+
+        head_names = ('projector.', 'module.projector.',
+                      'incident_output.', 'module.incident_output.')
+        head_parameters = [parameter for name, parameter in trainable
+                           if name.startswith(head_names)]
+        backbone_parameters = [parameter for name, parameter in trainable
+                               if not name.startswith(head_names)]
+        parameter_groups = []
+        backbone_scale = (self.args.lora_lr_scale
+                          if self.args.finetune_strategy == 'lora'
+                          else self.args.encoder_lr_scale)
+        if backbone_parameters:
+            parameter_groups.append({
+                'params': backbone_parameters,
+                'lr': self.args.learning_rate * backbone_scale,
+                'lr_scale': backbone_scale,
+            })
+        if head_parameters:
+            parameter_groups.append({
+                'params': head_parameters,
+                'lr': self.args.learning_rate,
+                'lr_scale': 1.0,
+            })
+        return optim.Adam(parameter_groups)
+
+    def _core_model(self):
+        return self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+
+    def _load_pretrained_for_finetuning(self):
+        checkpoint = torch.load(
+            self.args.pretrained_checkpoint, map_location=self.device)
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            checkpoint = checkpoint['model_state_dict']
+        checkpoint = {
+            (name[7:] if name.startswith('module.') else name): value
+            for name, value in checkpoint.items()
+        }
+        core_model = self._core_model()
+        # Preserve the online encoder, predictor and trained forecasting head
+        # together. Replacing the encoder with its EMA copy changes this mapping.
+        core_model.load_state_dict(checkpoint, strict=True)
+        if self.args.finetune_strategy == 'lora':
+            core_model.configure_lora(self.args.lora_rank, self.args.lora_alpha,
+                                      self.args.lora_dropout)
+        else:
+            core_model.configure_finetuning(
+                'partial' if self.args.finetune_strategy == 'gradual' else self.args.finetune_strategy,
+                0 if self.args.finetune_strategy == 'gradual' else self.args.partial_unfreeze_layers)
+        trainable = sum(parameter.numel() for parameter in core_model.parameters()
+                        if parameter.requires_grad)
+        total = sum(parameter.numel() for parameter in core_model.parameters())
+        print(f'Loaded JEPA checkpoint: {self.args.pretrained_checkpoint}')
+        print(f'Fine-tune strategy: {self.args.finetune_strategy}; '
+              f'trainable parameters: {trainable:,}/{total:,} '
+              f'({100.0 * trainable / total:.2f}%)')
+
+    def _configure_gradual_epoch(self, epoch):
+        """Zero-based epoch; preserve optimizer moments across unfreezing."""
+        if epoch < self.args.gradual_head_epochs:
+            phase, strategy, layers = 'predictor/head', 'partial', 0
+        elif epoch < self.args.gradual_head_epochs + self.args.gradual_partial_epochs:
+            phase, strategy, layers = 'last encoder layers', 'partial', self.args.partial_unfreeze_layers
+        else:
+            phase, strategy, layers = 'full online network', 'full', 0
+        model = self._core_model()
+        model.configure_finetuning(strategy, layers)
+        # Graph/incident feature extractors join only the final full phase.
+        if strategy != 'full':
+            for name in ('incident_fusion', 'graph_encoder', 'fusion_gate'):
+                if hasattr(model, name):
+                    getattr(model, name).requires_grad_(False)
+        if getattr(self, '_gradual_phase', None) != phase:
+            count = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f'Gradual epoch {epoch + 1}: {phase}; trainable={count:,}')
+            self._gradual_phase = phase
 
     def _select_criterion(self):
         criterion = nn.MSELoss()
@@ -108,10 +204,148 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         self.model.train()
         return total_loss
 
+    def _pretrain_epoch(self, data_loader, optimizer=None, scaler=None):
+        is_training = optimizer is not None
+        self.model.train(is_training)
+        history = {
+            'forecast': [], 'jepa': [], 'topo': [], 'text': [],
+            'alignment': [], 'total': []
+        }
+        context = torch.enable_grad() if is_training else torch.no_grad()
+        with context:
+            for batch in data_loader:
+                (batch_x, batch_y, batch_x_mark, batch_y_mark,
+                 incident_data, target_text) = self._unpack_batch(batch)
+                batch_x = batch_x.float().to(self.device)
+                batch_y = batch_y.float().to(self.device)
+                if 'PEMS' in self.args.data or 'Solar' in self.args.data:
+                    batch_x_mark = None
+                    batch_y_mark = None
+                else:
+                    batch_x_mark = batch_x_mark.float().to(self.device)
+                    batch_y_mark = batch_y_mark.float().to(self.device)
+
+                target_x = batch_y[
+                    :, self.args.label_len:
+                    self.args.label_len + self.args.seq_len, :]
+                target_mark = (batch_y_mark[
+                    :, self.args.label_len:
+                    self.args.label_len + self.args.seq_len, :]
+                    if batch_y_mark is not None else None)
+                dec_inp = torch.zeros_like(batch_y).to(self.device)
+
+                if is_training:
+                    optimizer.zero_grad()
+                amp_context = (torch.cuda.amp.autocast()
+                               if self.args.use_amp else
+                               torch.cuda.amp.autocast(enabled=False))
+                with amp_context:
+                    (forecast, jepa_loss, topo_loss, text_loss,
+                     alignment_loss) = self._core_model().forward_with_jepa(
+                        batch_x, batch_x_mark, dec_inp, batch_y_mark,
+                        target_x, target_mark, target_text,
+                        incident_data=incident_data)
+                    f_dim = -1 if self.args.features == 'MS' else 0
+                    future = batch_y[:, self.args.label_len:
+                                     self.args.label_len + self.args.pred_len, f_dim:]
+                    forecast_loss = nn.functional.mse_loss(
+                        forecast[:, -self.args.pred_len:, f_dim:], future)
+                    loss = (forecast_loss + self.args.jepa_weight * jepa_loss +
+                            self.args.topo_weight * topo_loss +
+                            self.args.text_weight * text_loss +
+                            self.args.alignment_weight * alignment_loss)
+
+                if is_training:
+                    if scaler is not None:
+                        scaler.scale(loss).backward()
+                        scaler.step(optimizer)
+                        scaler.update()
+                    else:
+                        loss.backward()
+                        optimizer.step()
+                    self._core_model().update_target_encoder()
+
+                values = {
+                    'forecast': forecast_loss.item(),
+                    'jepa': jepa_loss.item(),
+                    'topo': topo_loss.item(),
+                    'text': text_loss.item(),
+                    'alignment': alignment_loss.item(),
+                    'total': loss.item(),
+                }
+                for name, value in values.items():
+                    history[name].append(value)
+
+        return {name: float(np.average(values))
+                for name, values in history.items()}
+
+    def pretrain(self, setting):
+        _, train_loader = self._get_data(flag='train')
+        _, vali_loader = self._get_data(flag='val')
+        path = os.path.join(self.args.checkpoints, setting)
+        os.makedirs(path, exist_ok=True)
+
+        core_model = self._core_model()
+        core_model.configure_pretraining()
+        trainable = sum(parameter.numel() for parameter in core_model.parameters()
+                        if parameter.requires_grad)
+        total = sum(parameter.numel() for parameter in core_model.parameters())
+        print(f'JEPA pretraining trainable parameters: {trainable:,}/{total:,} '
+              f'({100.0 * trainable / total:.2f}%)')
+
+        optimizer = self._select_optimizer()
+        scaler = torch.cuda.amp.GradScaler() if self.args.use_amp else None
+        early_stopping = EarlyStopping(
+            patience=self.args.patience, verbose=True)
+
+        for epoch in range(self.args.train_epochs):
+            epoch_time = time.time()
+            train_metrics = self._pretrain_epoch(
+                train_loader, optimizer=optimizer, scaler=scaler)
+            val_metrics = self._pretrain_epoch(vali_loader)
+            print(
+                'Pretrain Epoch: {0} | train total: {1:.7f}, '
+                'jepa: {2:.7f} | val total: {3:.7f}, jepa: {4:.7f} '
+                '| time: {5:.2f}s'.format(
+                    epoch + 1, train_metrics['total'],
+                    train_metrics['jepa'], val_metrics['total'],
+                    val_metrics['jepa'], time.time() - epoch_time))
+            print('Forecast MSE | train: {:.7f} | val: {:.7f}'.format(
+                train_metrics['forecast'], val_metrics['forecast']))
+            # All stages select checkpoints using the same forecasting metric.
+            early_stopping(val_metrics['forecast'], self.model, path)
+            if early_stopping.early_stop:
+                print('Early stopping')
+                break
+            adjust_learning_rate(optimizer, epoch + 1, self.args)
+
+        best_model_path = os.path.join(path, 'checkpoint.pth')
+        self.model.load_state_dict(torch.load(
+            best_model_path, map_location=self.device))
+        print(f'Best pretraining checkpoint: {best_model_path}')
+        return self.model
+
+    def test_pretrain(self, setting, load=False):
+        if load:
+            checkpoint_path = os.path.join(
+                self.args.checkpoints, setting, 'checkpoint.pth')
+            self.model.load_state_dict(torch.load(
+                checkpoint_path, map_location=self.device))
+        # The head was trained during pretraining: evaluate traffic directly.
+        return self.test(setting)
+
     def train(self, setting):
+        if self.args.training_stage == 'pretrain':
+            return self.pretrain(setting)
+        if self.args.training_stage == 'finetune':
+            self._load_pretrained_for_finetuning()
+
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
-        test_data, test_loader = self._get_data(flag='test')
+        if getattr(self.args, 'fremont_adaptation_root', ''):
+            test_data, test_loader = None, None
+        else:
+            test_data, test_loader = self._get_data(flag='test')
 
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
@@ -130,6 +364,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
 
         for epoch in range(self.args.train_epochs):
             iter_count = 0
+            if (self.args.training_stage == 'finetune' and
+                    self.args.finetune_strategy == 'gradual'):
+                self._configure_gradual_epoch(epoch)
             train_loss = []
             branch_history = {
                 'forecast': [], 'jepa': [], 'topo': [],
@@ -162,7 +399,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 dec_inp = torch.zeros_like(batch_y[:, self.args.label_len:self.args.label_len + self.args.pred_len, :]).float()
                 dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
 
-                use_jepa = (self.args.model_variant == 'jepa' and
+                use_jepa = (self.args.training_stage == 'joint' and
+                            self.args.model_variant == 'jepa' and
                             (self.args.jepa_weight > 0 or self.args.topo_weight > 0 or
                              self.args.text_weight > 0 or
                              self.args.alignment_weight > 0))
@@ -264,11 +502,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 for name, values in branch_history.items()
             }
             vali_loss = self.vali(vali_data, vali_loader, criterion)
-            test_loss = self.vali(test_data, test_loader, criterion)
+            test_loss = (self.vali(test_data, test_loader, criterion)
+                         if test_loader is not None else float('nan'))
 
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
             early_stopping(vali_loss, self.model, path)
+            if (self.args.training_stage == 'finetune' and
+                    self.args.finetune_strategy == 'gradual' and
+                    epoch < self.args.gradual_head_epochs + self.args.gradual_partial_epochs):
+                # Keep the global best checkpoint but allow all phases to run.
+                early_stopping.counter = 0
+                early_stopping.early_stop = False
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
@@ -285,7 +530,9 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load(os.path.join(
+                self.args.checkpoints, setting, 'checkpoint.pth'),
+                map_location=self.device))
 
         preds = []
         trues = []
