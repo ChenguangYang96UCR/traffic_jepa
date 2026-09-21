@@ -144,6 +144,9 @@ class Model(nn.Module):
         self.use_gnn = bool(getattr(configs, 'use_gnn', False))
         self.alignment_weight = getattr(configs, 'alignment_weight', 0.0)
         self.use_incident = bool(getattr(configs, 'incident', False))
+        self.use_forecast_mask = bool(getattr(configs, 'forecast_mask', False))
+        self.forecast_mask_floor = float(
+            getattr(configs, 'forecast_mask_floor', 0.1))
         self.incident_scale = float(getattr(configs, 'incident_scale', 1.0))
         self.incident_sigma = float(getattr(configs, 'incident_sigma', 1.0))
         if self.alignment_weight > 0 and not self.use_gnn:
@@ -184,6 +187,14 @@ class Model(nn.Module):
                 nn.Linear(configs.d_model, configs.d_model)
             )
         self.projector = nn.Linear(configs.d_model, configs.pred_len, bias=True)
+        if self.use_forecast_mask:
+            mask_hidden = max(configs.d_model // 4, 8)
+            self.forecast_mask_head = nn.Sequential(
+                nn.LayerNorm(configs.d_model),
+                nn.Linear(configs.d_model, mask_hidden),
+                nn.GELU(),
+                nn.Linear(mask_hidden, configs.pred_len),
+            )
         if self.use_incident:
             if self.incident_sigma <= 0:
                 raise ValueError('--incident_sigma must be positive')
@@ -353,6 +364,10 @@ class Model(nn.Module):
             for module in (self.target_graph_encoder,
                            self.target_fusion_gate):
                 module.requires_grad_(False)
+        if self.use_forecast_mask:
+            # Auxiliary loss controller: retained in checkpoints for strict
+            # loading, but never updated during downstream fine-tuning.
+            self.forecast_mask_head.requires_grad_(False)
 
         if strategy in ('partial', 'frozen'):
             # Start frozen, then expose the task head, latent predictor and the
@@ -421,15 +436,16 @@ class Model(nn.Module):
 
     def forward_with_jepa(self, x_enc, x_mark_enc, x_dec, x_mark_dec,
                           target_x, target_mark, target_text=None,
-                          incident_data=None):
+                          incident_data=None, return_forecast_mask=False):
         if self.model_variant != 'jepa' or (self.jepa_weight <= 0 and
                                             self.topo_weight <= 0 and
                                             self.text_weight <= 0 and
                                             self.alignment_weight <= 0):
             zero = x_enc.new_zeros(())
-            return self.forward(
+            result = (self.forward(
                 x_enc, x_mark_enc, x_dec, x_mark_dec,
-                incident_data=incident_data), zero, zero, zero, zero
+                incident_data=incident_data), zero, zero, zero, zero)
+            return (*result, None) if return_forecast_mask else result
 
         online_input, means, stdev = self._normalize_with_stats(x_enc)
         num_variables = x_enc.shape[-1]
@@ -442,6 +458,8 @@ class Model(nn.Module):
         forecast = self._project_representation(
             predicted_rep, num_variables, means, stdev,
             incident_context=incident_context)
+        forecast_mask = self._forecast_mask(
+            predicted_rep[:, :num_variables, :])
 
         target_input = self._normalized_view(target_x)
         with torch.no_grad():
@@ -470,7 +488,18 @@ class Model(nn.Module):
         if self.use_gnn and self.alignment_weight > 0:
             alignment_loss = self._cramer_alignment_loss(
                 graph_variables, transformer_variables)
-        return forecast, jepa_loss, topo_loss, text_loss, alignment_loss
+        result = (forecast, jepa_loss, topo_loss, text_loss, alignment_loss)
+        return (*result, forecast_mask) if return_forecast_mask else result
+
+    def _forecast_mask(self, variable_representation):
+        """Context-conditioned forecast weights/probabilities, shaped [B,S,N]."""
+        if not self.use_forecast_mask:
+            return None
+        probabilities = torch.sigmoid(
+            self.forecast_mask_head(variable_representation)).permute(0, 2, 1)
+        weights = (self.forecast_mask_floor +
+                   (1.0 - self.forecast_mask_floor) * probabilities)
+        return {'weights': weights, 'probabilities': probabilities}
 
     @staticmethod
     def _cramer_alignment_loss(graph_rep, transformer_rep):

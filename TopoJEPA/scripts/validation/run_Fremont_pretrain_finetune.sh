@@ -70,6 +70,16 @@ COMMON_ARGS=(
   --topo_weight 0
   --text_weight 0
 )
+if [[ "${FORECAST_MASK:-0}" == "1" ]]; then
+  COMMON_ARGS+=(
+    --forecast_mask
+    --forecast_mask_floor "${FORECAST_MASK_FLOOR:-0.1}"
+    --forecast_mask_target "${FORECAST_MASK_TARGET:-0.5}"
+    --forecast_mask_budget_weight "${FORECAST_MASK_BUDGET_WEIGHT:-0.1}"
+    --forecast_mask_entropy_weight "${FORECAST_MASK_ENTROPY_WEIGHT:-0.01}"
+    --forecast_mask_smooth_weight "${FORECAST_MASK_SMOOTH_WEIGHT:-0.01}"
+  )
+fi
 if [[ -n "$ADAPTATION_ROOT" ]]; then
   COMMON_ARGS+=(--fremont_adaptation_root "$ADAPTATION_ROOT")
 fi

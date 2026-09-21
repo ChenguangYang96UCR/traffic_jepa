@@ -240,8 +240,9 @@ if __name__ == '__main__':
         if args.model != 'TopoJEPA' or args.model_variant != 'jepa':
             parser.error('--training_stage pretrain/finetune requires '
                          '--model TopoJEPA --model_variant jepa')
-        if args.training_stage == 'finetune' and args.data != 'Fremont':
-            parser.error('Cross-city fine-tuning must use --data Fremont')
+        if (args.training_stage == 'finetune' and
+                args.data not in ('Fremont', 'AlamedaCities')):
+            parser.error('Staged fine-tuning supports Fremont or AlamedaCities')
     if args.training_stage == 'pretrain':
         if args.data not in ('Fremont', 'AlamedaCities'):
             parser.error('Staged JEPA pretraining supports Fremont or AlamedaCities')

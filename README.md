@@ -184,6 +184,38 @@ cross-city checkpoint. The summary contains only metrics evaluated on the
 Fremont test set; the pretraining run's Alameda test metric is not mixed into
 the cross-city comparison table.
 
+### Per-city same-domain pretraining and fine-tuning
+
+To run a separate pretrain → full-fine-tune experiment for every non-empty City
+in Alameda `sensors.csv`:
+
+```bash
+bash scripts/validation/run_each_AlamedaCity_pretrain_finetune.sh all
+```
+
+For each city, both stages use only that city's sensor columns. Pretraining uses
+that city's Alameda train/validation splits and directly evaluates its test
+split. Fine-tuning starts from the matching city checkpoint, reuses that city's
+train/validation data with forecasting MSE, and evaluates the same city test
+split. Thus this is a same-domain staged-training experiment, not a held-out-city
+transfer experiment.
+
+Limit a run to named cities or select a different fine-tuning strategy:
+
+```bash
+CITIES='Fremont,Oakland,Hayward' \
+  bash scripts/validation/run_each_AlamedaCity_pretrain_finetune.sh all
+
+FINETUNE_STRATEGY=partial \
+  bash scripts/validation/run_each_AlamedaCity_pretrain_finetune.sh all
+```
+
+`FINETUNE_STRATEGY` supports `full` (default), `partial`, `gradual`, and `lora`.
+Use modes `pretrain` and `finetune` to separate stages, or `summary` to print two
+rows per city: direct joint-pretraining performance and fine-tuned performance.
+The script passes each city's real sensor count to the logged `enc_in/dec_in/c_out`
+fields, although the inverted model itself supports a runtime-variable token count.
+
 ## LoRA fine-tuning
 
 From `TopoJEPA`, reuse the existing joint-pretrained checkpoint without rerunning

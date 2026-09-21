@@ -132,6 +132,41 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         criterion = nn.MSELoss()
         return criterion
 
+    def _forecast_pretrain_loss(self, forecast, future, mask_info):
+        """Weighted MSE plus anti-degeneracy regularizers for learned masks."""
+        unweighted = nn.functional.mse_loss(forecast, future)
+        zero = unweighted.new_zeros(())
+        if mask_info is None:
+            return unweighted, {
+                'forecast': unweighted, 'forecast_weighted': unweighted,
+                'mask_budget': zero, 'mask_neg_entropy': zero,
+                'mask_smooth': zero, 'mask_mean': unweighted.new_ones(()),
+                'mask_min': unweighted.new_ones(()),
+                'mask_max': unweighted.new_ones(()),
+            }
+
+        weights = mask_info['weights']
+        probabilities = mask_info['probabilities'].clamp(1e-6, 1.0 - 1e-6)
+        if weights.shape != forecast.shape:
+            raise ValueError(
+                f'Forecast mask {weights.shape} does not match forecast {forecast.shape}')
+        squared_error = (forecast - future).square()
+        weighted = (weights * squared_error).sum() / weights.sum().clamp_min(1e-6)
+        budget = (weights.mean() - self.args.forecast_mask_target).square()
+        negative_entropy = (probabilities * probabilities.log() +
+                            (1.0 - probabilities) *
+                            (1.0 - probabilities).log()).mean()
+        smooth = (weights[:, 1:] - weights[:, :-1]).abs().mean()
+        total = (weighted + self.args.forecast_mask_budget_weight * budget +
+                 self.args.forecast_mask_entropy_weight * negative_entropy +
+                 self.args.forecast_mask_smooth_weight * smooth)
+        return total, {
+            'forecast': unweighted, 'forecast_weighted': weighted,
+            'mask_budget': budget, 'mask_neg_entropy': negative_entropy,
+            'mask_smooth': smooth, 'mask_mean': weights.mean(),
+            'mask_min': weights.min(), 'mask_max': weights.max(),
+        }
+
     def _unpack_batch(self, batch):
         batch_x, batch_y, batch_x_mark, batch_y_mark = batch[:4]
         incident_data = None
@@ -208,8 +243,10 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         is_training = optimizer is not None
         self.model.train(is_training)
         history = {
-            'forecast': [], 'jepa': [], 'topo': [], 'text': [],
-            'alignment': [], 'total': []
+            'forecast': [], 'forecast_weighted': [],
+            'mask_budget': [], 'mask_neg_entropy': [], 'mask_smooth': [],
+            'mask_mean': [], 'mask_min': [], 'mask_max': [],
+            'jepa': [], 'topo': [], 'text': [], 'alignment': [], 'total': []
         }
         context = torch.enable_grad() if is_training else torch.no_grad()
         with context:
@@ -241,16 +278,18 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                                torch.cuda.amp.autocast(enabled=False))
                 with amp_context:
                     (forecast, jepa_loss, topo_loss, text_loss,
-                     alignment_loss) = self._core_model().forward_with_jepa(
+                     alignment_loss, mask_info) = self._core_model().forward_with_jepa(
                         batch_x, batch_x_mark, dec_inp, batch_y_mark,
                         target_x, target_mark, target_text,
-                        incident_data=incident_data)
+                        incident_data=incident_data,
+                        return_forecast_mask=True)
                     f_dim = -1 if self.args.features == 'MS' else 0
                     future = batch_y[:, self.args.label_len:
                                      self.args.label_len + self.args.pred_len, f_dim:]
-                    forecast_loss = nn.functional.mse_loss(
-                        forecast[:, -self.args.pred_len:, f_dim:], future)
-                    loss = (forecast_loss + self.args.jepa_weight * jepa_loss +
+                    forecast_objective, mask_metrics = self._forecast_pretrain_loss(
+                        forecast[:, -self.args.pred_len:, f_dim:], future,
+                        mask_info)
+                    loss = (forecast_objective + self.args.jepa_weight * jepa_loss +
                             self.args.topo_weight * topo_loss +
                             self.args.text_weight * text_loss +
                             self.args.alignment_weight * alignment_loss)
@@ -266,7 +305,7 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     self._core_model().update_target_encoder()
 
                 values = {
-                    'forecast': forecast_loss.item(),
+                    **{name: value.item() for name, value in mask_metrics.items()},
                     'jepa': jepa_loss.item(),
                     'topo': topo_loss.item(),
                     'text': text_loss.item(),
@@ -312,6 +351,14 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     val_metrics['jepa'], time.time() - epoch_time))
             print('Forecast MSE | train: {:.7f} | val: {:.7f}'.format(
                 train_metrics['forecast'], val_metrics['forecast']))
+            if self.args.forecast_mask:
+                print(
+                    'Masked forecast MSE | train: {:.7f} | val: {:.7f} | '
+                    'mask mean/min/max (val): {:.4f}/{:.4f}/{:.4f}'.format(
+                        train_metrics['forecast_weighted'],
+                        val_metrics['forecast_weighted'],
+                        val_metrics['mask_mean'], val_metrics['mask_min'],
+                        val_metrics['mask_max']))
             # All stages select checkpoints using the same forecasting metric.
             early_stopping(val_metrics['forecast'], self.model, path)
             if early_stopping.early_stop:
