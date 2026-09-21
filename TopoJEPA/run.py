@@ -212,6 +212,18 @@ if __name__ == '__main__':
                         help='weight of Equation-6 Cramer alignment between GNN and Transformer tokens')
     parser.add_argument('--ema_momentum', type=float, default=0.996,
                         help='EMA momentum for the JEPA target encoder')
+    parser.add_argument('--forecast_mask', action='store_true',
+                        help='learn [future time,sensor] weights for the pretraining forecast loss')
+    parser.add_argument('--forecast_mask_floor', type=float, default=0.1,
+                        help='minimum forecast weight so no target is ignored')
+    parser.add_argument('--forecast_mask_target', type=float, default=0.5,
+                        help='target mean of the learned forecast weights')
+    parser.add_argument('--forecast_mask_budget_weight', type=float, default=0.1,
+                        help='weight for the mean-mask budget penalty')
+    parser.add_argument('--forecast_mask_entropy_weight', type=float, default=0.01,
+                        help='weight for negative Bernoulli entropy of mask probabilities')
+    parser.add_argument('--forecast_mask_smooth_weight', type=float, default=0.01,
+                        help='weight for temporal total variation of forecast weights')
     parser.add_argument('--stgcn_kernel_size', type=int, default=3)
     parser.add_argument('--stgcn_cheb_order', type=int, default=3)
     parser.add_argument('--stgcn_blocks', type=int, default=2)
@@ -280,6 +292,21 @@ if __name__ == '__main__':
             parser.error('gradual partial_unfreeze_layers must be in [1, e_layers]')
     if not 0 < args.encoder_lr_scale <= 1:
         parser.error('--encoder_lr_scale must be in (0, 1]')
+    if args.forecast_mask:
+        import math
+        if args.model != 'TopoJEPA' or args.model_variant != 'jepa':
+            parser.error('--forecast_mask requires --model TopoJEPA --model_variant jepa')
+        if args.features != 'M':
+            parser.error('--forecast_mask currently requires --features M')
+        if args.training_stage not in ('pretrain', 'finetune'):
+            parser.error('--forecast_mask is supported only by staged pretrain/finetune')
+        if not 0 <= args.forecast_mask_floor < args.forecast_mask_target < 1:
+            parser.error('Require 0 <= forecast_mask_floor < forecast_mask_target < 1')
+        mask_weights = (args.forecast_mask_budget_weight,
+                        args.forecast_mask_entropy_weight,
+                        args.forecast_mask_smooth_weight)
+        if any(not math.isfinite(value) or value < 0 for value in mask_weights):
+            parser.error('Forecast-mask regularization weights must be finite and non-negative')
 
     if args.incident:
         if args.data != 'Fremont' or args.model != 'TopoJEPA':
