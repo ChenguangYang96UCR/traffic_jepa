@@ -1,0 +1,11 @@
+masked-st-jepa/runs
+traffic_forcasting/Experiements
+traffic_forcasting/sc-jepa/runs
+traffic_forcasting/TopoJEPA/checkpoints
+traffic_forcasting/TopoJEPA/dataset
+traffic_forcasting/TopoJEPA/results
+traffic_forcasting/TopoJEPA/test_results
+traffic_forcasting/TopoJEPA/text_embedding_cache
+traffic_forcasting/XTraffic
+.log
+masked-st-jepa/dataset

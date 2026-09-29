@@ -1,0 +1,37 @@
+nohup: ignoring input
+Device=cuda; data=[('train', 10280), ('val', 2203), ('test', 2204)]; sample=(12, 93, 1); mask=random:9
+pretrain 001/20: train_loss=0.348468 val_loss=0.161921 val_mae=0.774766 val_rmse=0.947288
+pretrain 002/20: train_loss=0.154667 val_loss=0.086874 val_mae=0.765008 val_rmse=0.934529
+pretrain 003/20: train_loss=0.111842 val_loss=0.059972 val_mae=0.762099 val_rmse=0.926900
+pretrain 004/20: train_loss=0.092698 val_loss=0.049038 val_mae=0.756187 val_rmse=0.917347
+pretrain 005/20: train_loss=0.083286 val_loss=0.044833 val_mae=0.748691 val_rmse=0.906303
+pretrain 006/20: train_loss=0.078817 val_loss=0.043160 val_mae=0.743201 val_rmse=0.900651
+pretrain 007/20: train_loss=0.077154 val_loss=0.042078 val_mae=0.746801 val_rmse=0.905021
+pretrain 008/20: train_loss=0.076920 val_loss=0.042121 val_mae=0.752654 val_rmse=0.910720
+pretrain 009/20: train_loss=0.077520 val_loss=0.042275 val_mae=0.760270 val_rmse=0.916313
+pretrain 010/20: train_loss=0.078864 val_loss=0.043378 val_mae=0.771191 val_rmse=0.926704
+pretrain 011/20: train_loss=0.081233 val_loss=0.044854 val_mae=0.779513 val_rmse=0.937714
+pretrain 012/20: train_loss=0.084261 val_loss=0.046673 val_mae=0.781270 val_rmse=0.943247
+Early stopping pretrain after 12 epochs
+finetune 001/20: train_loss=0.029258 val_loss=0.010711 val_mae=0.056321 val_rmse=0.092174
+finetune 002/20: train_loss=0.013877 val_loss=0.009441 val_mae=0.051774 val_rmse=0.086679
+finetune 003/20: train_loss=0.013378 val_loss=0.009112 val_mae=0.049793 val_rmse=0.084567
+finetune 004/20: train_loss=0.013275 val_loss=0.008964 val_mae=0.048412 val_rmse=0.083298
+finetune 005/20: train_loss=0.013223 val_loss=0.008992 val_mae=0.049393 val_rmse=0.084404
+finetune 006/20: train_loss=0.013117 val_loss=0.008805 val_mae=0.049314 val_rmse=0.082915
+finetune 007/20: train_loss=0.013056 val_loss=0.008924 val_mae=0.050868 val_rmse=0.084768
+finetune 008/20: train_loss=0.012990 val_loss=0.008747 val_mae=0.047942 val_rmse=0.082733
+finetune 009/20: train_loss=0.012908 val_loss=0.008634 val_mae=0.048584 val_rmse=0.081793
+finetune 010/20: train_loss=0.012915 val_loss=0.008725 val_mae=0.047690 val_rmse=0.082597
+finetune 011/20: train_loss=0.012924 val_loss=0.008693 val_mae=0.047341 val_rmse=0.082024
+finetune 012/20: train_loss=0.012947 val_loss=0.008762 val_mae=0.047510 val_rmse=0.082134
+finetune 013/20: train_loss=0.013029 val_loss=0.008756 val_mae=0.047195 val_rmse=0.081474
+finetune 014/20: train_loss=0.013147 val_loss=0.008718 val_mae=0.046325 val_rmse=0.080635
+finetune 015/20: train_loss=0.013307 val_loss=0.008848 val_mae=0.046851 val_rmse=0.081061
+finetune 016/20: train_loss=0.013402 val_loss=0.008901 val_mae=0.048166 val_rmse=0.081076
+finetune 017/20: train_loss=0.013527 val_loss=0.009050 val_mae=0.048100 val_rmse=0.082119
+finetune 018/20: train_loss=0.013671 val_loss=0.009169 val_mae=0.049158 val_rmse=0.082547
+finetune 019/20: train_loss=0.013798 val_loss=0.009131 val_mae=0.047371 val_rmse=0.081567
+Early stopping finetune after 19 epochs
+Test masked positions: {'value': 0.00328685372717976, 'latent': 0.05470660971156482, 'mae': 0.04651710263262427, 'mse': 0.00659333212138872, 'loss': 0.008757514857134347, 'rmse': 0.08119933572011978}
+Saved results to /home/ADS/cyang314/ucr_work/traffic_jepa/masked-st-jepa/runs/fremont_random_k9

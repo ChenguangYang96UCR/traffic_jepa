@@ -1,0 +1,63 @@
+nohup: ignoring input
+Device=cuda:0; split sizes={'train': 10280, 'val': 2203, 'test': 2204}
+pretrain: trainable=5,286,784/10,258,435; source=None
+pretrain epoch 1/20: train=0.456900 val_total=0.063737
+pretrain epoch 2/20: train=0.258680 val_total=0.031681
+pretrain epoch 3/20: train=0.214859 val_total=0.023193
+pretrain epoch 4/20: train=0.195696 val_total=0.028356
+pretrain epoch 5/20: train=0.223810 val_total=0.108599
+pretrain epoch 6/20: train=0.605871 val_total=0.879558
+pretrain epoch 7/20: train=1.879126 val_total=1.947471
+pretrain epoch 8/20: train=2.596742 val_total=2.330128
+/home/ADS/cyang314/miniconda3/envs/topojepa/lib/python3.10/site-packages/torch/_utils.py:776: UserWarning: TypedStorage is deprecated. It will be removed in the future and UntypedStorage will be the only storage class. This should only matter to you if you are using storages directly.  To access UntypedStorage directly, use tensor.untyped_storage() instead of tensor.storage()
+  return self.fget.__get__(instance, owner)()
+probe: trainable=387/10,258,435; source=runs/fremont_fine_only_seed2026/pretrain/checkpoint.pt
+probe epoch 1/20: train=0.032050 val_MSE=0.031592
+probe epoch 2/20: train=0.031997 val_MSE=0.031571
+probe epoch 3/20: train=0.031975 val_MSE=0.031562
+probe epoch 4/20: train=0.031965 val_MSE=0.031557
+probe epoch 5/20: train=0.031960 val_MSE=0.031555
+probe epoch 6/20: train=0.031958 val_MSE=0.031554
+probe epoch 7/20: train=0.031957 val_MSE=0.031554
+probe epoch 8/20: train=0.031956 val_MSE=0.031553
+probe epoch 9/20: train=0.031956 val_MSE=0.031553
+probe epoch 10/20: train=0.031956 val_MSE=0.031553
+probe epoch 11/20: train=0.031956 val_MSE=0.031553
+probe epoch 12/20: train=0.031956 val_MSE=0.031553
+probe epoch 13/20: train=0.031956 val_MSE=0.031553
+probe epoch 14/20: train=0.031956 val_MSE=0.031553
+probe epoch 15/20: train=0.031956 val_MSE=0.031553
+probe epoch 16/20: train=0.031956 val_MSE=0.031553
+probe epoch 17/20: train=0.031956 val_MSE=0.031553
+probe epoch 18/20: train=0.031956 val_MSE=0.031553
+probe epoch 19/20: train=0.031956 val_MSE=0.031553
+probe epoch 20/20: train=0.031956 val_MSE=0.031553
+probe: {'MAE': 0.09414560485897217, 'MSE': 0.03212568911399328, 'RMSE': 0.17923640566021534}
+full: trainable=5,287,171/10,258,435; source=runs/fremont_fine_only_seed2026/pretrain/checkpoint.pt
+full epoch 1/20: train=0.031998 val_MSE=0.031339
+full epoch 2/20: train=0.031462 val_MSE=0.030641
+full epoch 3/20: train=0.030976 val_MSE=0.030369
+full epoch 4/20: train=0.030768 val_MSE=0.030223
+full epoch 5/20: train=0.030665 val_MSE=0.030159
+full epoch 6/20: train=0.030618 val_MSE=0.030129
+full epoch 7/20: train=0.030597 val_MSE=0.030115
+full epoch 8/20: train=0.030586 val_MSE=0.030108
+full epoch 9/20: train=0.030581 val_MSE=0.030105
+full epoch 10/20: train=0.030578 val_MSE=0.030103
+full epoch 11/20: train=0.030577 val_MSE=0.030102
+full epoch 12/20: train=0.030576 val_MSE=0.030102
+full epoch 13/20: train=0.030576 val_MSE=0.030102
+full epoch 14/20: train=0.030575 val_MSE=0.030101
+full epoch 15/20: train=0.030577 val_MSE=0.030101
+full epoch 16/20: train=0.030576 val_MSE=0.030101
+full epoch 17/20: train=0.030576 val_MSE=0.030101
+full epoch 18/20: train=0.030576 val_MSE=0.030101
+full epoch 19/20: train=0.030577 val_MSE=0.030101
+full epoch 20/20: train=0.030576 val_MSE=0.030101
+full: {'MAE': 0.09182350449117808, 'MSE': 0.030652539388021753, 'RMSE': 0.1750786662846783}
+
+SC-JEPA traffic evaluation (stored traffic units)
+Method                                        MAE          MSE         RMSE
+Joint pretrain direct test           unavailable (SSL has no direct forecast evaluation)
+Fine-KL pretrain + frozen probe         0.0941456    0.0321257    0.1792364
+Fine-KL pretrain + full fine-tune       0.0918235    0.0306525    0.1750787

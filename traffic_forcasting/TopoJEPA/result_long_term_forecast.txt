@@ -1,0 +1,228 @@
+WECC_96_96_TopoJEPA_custom_ftM_sl96_ll48_pl96_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2022_projection_jepa_jw0.1_tw0.5_textw0.03_aw0.01_gnn1_0  
+mse:0.13877062499523163, mae:0.24621769785881042
+
+WECC_96_96_TopoJEPA_custom_ftM_sl96_ll48_pl96_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2023_projection_jepa_jw0.1_tw0.5_textw0.03_aw0.01_gnn1_0  
+mse:0.1440514475107193, mae:0.25182387232780457
+
+WECC_96_96_TopoJEPA_custom_ftM_sl96_ll48_pl96_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2024_projection_jepa_jw0.1_tw0.5_textw0.03_aw0.01_gnn1_0  
+mse:0.14184407889842987, mae:0.2523086965084076
+
+WECC_96_96_TopoJEPA_custom_ftM_sl96_ll48_pl96_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2025_projection_jepa_jw0.1_tw0.5_textw0.03_aw0.01_gnn1_0  
+mse:0.14239755272865295, mae:0.25319522619247437
+
+WECC_96_96_TopoJEPA_custom_ftM_sl96_ll48_pl96_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2026_projection_jepa_jw0.1_tw0.5_textw0.03_aw0.01_gnn1_0  
+mse:0.14145973324775696, mae:0.250437468290329
+
+Homeless_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df512_fc1_ebtimeF_dtTrue_validation_seed2022_projection_jepa_jw0.1_tw0.1_textw0.07_aw0.01_gnn1_0  
+mse:1.0401294231414795, mae:0.5894535779953003
+
+Homeless_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df512_fc1_ebtimeF_dtTrue_validation_seed2023_projection_jepa_jw0.1_tw0.1_textw0.07_aw0.01_gnn1_0  
+mse:1.0410254001617432, mae:0.5884110927581787
+
+Homeless_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df512_fc1_ebtimeF_dtTrue_validation_seed2024_projection_jepa_jw0.1_tw0.1_textw0.07_aw0.01_gnn1_0  
+mse:1.0406653881072998, mae:0.5904123187065125
+
+Homeless_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df512_fc1_ebtimeF_dtTrue_validation_seed2025_projection_jepa_jw0.1_tw0.1_textw0.07_aw0.01_gnn1_0  
+mse:1.0416882038116455, mae:0.5886039733886719
+
+Homeless_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df512_fc1_ebtimeF_dtTrue_validation_seed2026_projection_jepa_jw0.1_tw0.1_textw0.07_aw0.01_gnn1_0  
+mse:1.0395548343658447, mae:0.5890353322029114
+
+dengue_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2022_projection_jepa_jw0.035_tw0.75_textw0.05_aw0.05_gnn1_0  
+mse:1.6144425868988037, mae:0.6119341254234314
+
+dengue_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2023_projection_jepa_jw0.035_tw0.75_textw0.05_aw0.05_gnn1_0  
+mse:1.4632391929626465, mae:0.5695287585258484
+
+dengue_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2024_projection_jepa_jw0.035_tw0.75_textw0.05_aw0.05_gnn1_0  
+mse:1.4745285511016846, mae:0.573919951915741
+
+dengue_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2025_projection_jepa_jw0.035_tw0.75_textw0.05_aw0.05_gnn1_0  
+mse:1.4627420902252197, mae:0.5705398321151733
+
+dengue_16_16_TopoJEPA_custom_ftM_sl16_ll8_pl16_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_validation_seed2026_projection_jepa_jw0.035_tw0.75_textw0.05_aw0.05_gnn1_0  
+mse:1.4567497968673706, mae:0.5693368911743164
+
+Fremont_traffic_TopoJEPA_Fremont_ftM_sl12_ll6_pl12_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_traffic_only_no_topology_seed2026_projection_jepa_jw0.1_tw0.0_textw0.0_aw0.0_gnn0_0  
+mse:0.015581064857542515, mae:0.0652913823723793
+
+Fremont_incident_TopoJEPA_Fremont_ftM_sl12_ll6_pl12_dm128_nh8_el2_dl1_df256_fc1_ebtimeF_dtTrue_traffic_plus_incident_no_topology_seed2026_projection_jepa_jw0.1_tw0.0_textw0.0_aw0.0_gnn0_incident_s4.0_scale1.0_0  
+mse:0.015620299614965916, mae:0.06536643952131271
+
+Fremont_jepa_full_finetune_0  
+mse:0.01598554104566574, mae:0.06617261469364166
+
+Fremont_jepa_partial_finetune_0  
+mse:0.01638907752931118, mae:0.06692475825548172
+
+Fremont_jepa_pretrain_only_eval_0  
+mse:0.018571043387055397, mae:0.07130097597837448
+
+Fremont_jepa_full_finetune_0  
+mse:0.015985539183020592, mae:0.06617261469364166
+
+Fremont_jepa_partial_finetune_0  
+mse:0.01638907566666603, mae:0.06692475825548172
+
+Fremont_joint_pretrain_0  
+mse:0.015607389621436596, mae:0.06532616168260574
+
+Fremont_joint_pretrain_full_0  
+mse:0.015327398665249348, mae:0.06466364115476608
+
+Fremont_joint_pretrain_partial_L1_0  
+mse:0.01538640633225441, mae:0.06477048248052597
+
+Fremont_joint_pretrain_gradual_H2_P3_L1_0  
+mse:0.015420486219227314, mae:0.06483584642410278
+
+Fremont_joint_pretrain_lora_R8_A16_D0_LR1_0  
+mse:0.015368525870144367, mae:0.06472808122634888
+
+Fremont_joint_pretrain_test622_0  
+mse:0.016163455322384834, mae:0.06609897315502167
+
+Fremont_joint_pretrain_full_test622_0  
+mse:0.01608622446656227, mae:0.06584855914115906
+
+Fremont_joint_pretrain_partial_L1_test622_0  
+mse:0.016121258959174156, mae:0.06590598076581955
+
+Fremont_joint_pretrain_gradual_H2_P3_L1_test622_0  
+mse:0.016127189621329308, mae:0.065940260887146
+
+Fremont_joint_pretrain_lora_R8_A16_D0_LR1_test622_0  
+mse:0.016147742047905922, mae:0.06607446819543839
+
+AlamedaOtherCities_joint_pretrain_0  
+mse:0.022491106763482094, mae:0.07887198030948639
+
+AlamedaOtherCities_to_Fremont_zero_shot_0  
+mse:0.01569516211748123, mae:0.06532756984233856
+
+AlamedaOtherCities_to_Fremont_full_0  
+mse:0.01545304898172617, mae:0.06481315940618515
+
+AlamedaOtherCities_to_Fremont_partial_L1_0  
+mse:0.015520523302257061, mae:0.06487845629453659
+
+AlamedaOtherCities_to_Fremont_gradual_H2_P3_L1_0  
+mse:0.015572364442050457, mae:0.06497184932231903
+
+AlamedaOtherCities_to_Fremont_lora_R8_A16_D0_LR1_0  
+mse:0.01551046408712864, mae:0.06497165560722351
+
+City_albany_joint_pretrain_0  
+mse:0.0038871781434863806, mae:0.033262040466070175
+
+City_albany_full_finetune_0  
+mse:0.0037127314135432243, mae:0.031745053827762604
+
+City_berkeley_joint_pretrain_0  
+mse:0.027026697993278503, mae:0.088996022939682
+
+City_berkeley_full_finetune_0  
+mse:0.026948396116495132, mae:0.08864832669496536
+
+City_dublin_joint_pretrain_0  
+mse:0.018051110208034515, mae:0.0798671618103981
+
+City_dublin_full_finetune_0  
+mse:0.017975477501749992, mae:0.07946798950433731
+
+City_emeryville_joint_pretrain_0  
+mse:0.02508724480867386, mae:0.07857712358236313
+
+City_emeryville_full_finetune_0  
+mse:0.024841785430908203, mae:0.07798828929662704
+
+City_fremont_joint_pretrain_0  
+mse:0.015607387758791447, mae:0.06532616168260574
+
+City_fremont_full_finetune_0  
+mse:0.015327398665249348, mae:0.06466364115476608
+
+City_hayward_joint_pretrain_0  
+mse:0.021601660177111626, mae:0.07752080261707306
+
+City_hayward_full_finetune_0  
+mse:0.021343570202589035, mae:0.0769527480006218
+
+City_livermore_joint_pretrain_0  
+mse:0.013968014158308506, mae:0.05194045603275299
+
+City_livermore_full_finetune_0  
+mse:0.013832664117217064, mae:0.05145413801074028
+
+City_milpitas_joint_pretrain_0  
+mse:0.005315932910889387, mae:0.042822860181331635
+
+City_milpitas_full_finetune_0  
+mse:0.005184125620871782, mae:0.0421159453690052
+
+City_newark_joint_pretrain_0  
+mse:0.01912357099354267, mae:0.0748850628733635
+
+City_newark_full_finetune_0  
+mse:0.01901293359696865, mae:0.07461051642894745
+
+City_oakland_joint_pretrain_0  
+mse:0.02536049485206604, mae:0.08720482885837555
+
+City_oakland_full_finetune_0  
+mse:0.025171298533678055, mae:0.08689345419406891
+
+City_pleasanton_joint_pretrain_0  
+mse:0.02124704048037529, mae:0.07797061651945114
+
+City_pleasanton_full_finetune_0  
+mse:0.020994577556848526, mae:0.07737410068511963
+
+City_san_francisco_joint_pretrain_0  
+mse:0.0459720641374588, mae:0.1185506209731102
+
+City_san_francisco_full_finetune_0  
+mse:0.045896027237176895, mae:0.11831028014421463
+
+City_san_leandro_joint_pretrain_0  
+mse:0.021012863144278526, mae:0.06829853355884552
+
+City_san_leandro_full_finetune_0  
+mse:0.020833304151892662, mae:0.06787370145320892
+
+City_union_city_joint_pretrain_0  
+mse:0.02117019332945347, mae:0.07025798410177231
+
+City_union_city_full_finetune_0  
+mse:0.0211819875985384, mae:0.07016833126544952
+
+Fremont_masked_pretrain_0  
+mse:0.015717944130301476, mae:0.06548328697681427
+
+Fremont_masked_pretrain_full_0  
+mse:0.015347964130342007, mae:0.0647081807255745
+
+Fremont_pre_jepa_none_r0.25_full_0  
+mse:0.01587200164794922, mae:0.06585593521595001
+
+Fremont_pre_forecast_none_r0.25_0  
+mse:0.015607389621436596, mae:0.06532616913318634
+
+Fremont_pre_forecast_none_r0.25_full_0  
+mse:0.015327398665249348, mae:0.06466364115476608
+
+Fremont_pre_masked_forecast_temporal_r0.25_0  
+mse:0.016400106251239777, mae:0.06705646216869354
+
+Fremont_pre_masked_forecast_temporal_r0.25_full_0  
+mse:0.015480231493711472, mae:0.06512797623872757
+
+Fremont_pre_reconstruction_temporal_r0.25_full_0  
+mse:0.015886839479207993, mae:0.0658525601029396
+
+Fremont_pre_forecast_reconstruction_temporal_r0.25_0  
+mse:0.016065118834376335, mae:0.06622277200222015
+
+Fremont_pre_forecast_reconstruction_temporal_r0.25_full_0  
+mse:0.015520717017352581, mae:0.06502807885408401
+

@@ -1,0 +1,476 @@
+import argparse
+import torch
+from traffic_forcasting.TopoJEPA.experiments.exp_long_term_forecasting import Exp_Long_Term_Forecast
+from traffic_forcasting.TopoJEPA.experiments.exp_long_term_forecasting_partial import Exp_Long_Term_Forecast_Partial
+import random
+import numpy as np
+import os
+import json
+
+
+def infer_incident_cardinalities(args):
+    """Use released mappings, falling back to all split samples."""
+    mapping_specs = (
+        ('incident_num_descriptions', 'desc_mapping.json', 'Description'),
+        ('incident_num_types', 'type_mapping.json', 'Type'),
+    )
+    unresolved = []
+    for arg_name, filename, feature_name in mapping_specs:
+        if getattr(args, arg_name) is not None:
+            continue
+        path = os.path.join(args.root_path, filename)
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as handle:
+                setattr(args, arg_name, max(len(json.load(handle)), 1))
+        else:
+            unresolved.append((arg_name, feature_name))
+
+    need_position = args.incident_num_positions is None
+    maxima = {name: -1 for name, _ in unresolved}
+    position_max = -1
+    if unresolved or need_position:
+        for split in ('train', 'val', 'test'):
+            filename = args.fremont_file_pattern.format(flag=split)
+            path = os.path.join(args.root_path, filename)
+            samples = np.load(path, allow_pickle=True)
+            for sample in samples:
+                features = sample['incident_features']
+                for arg_name, feature_name in unresolved:
+                    value = (features.get(feature_name, 0)
+                             if isinstance(features, dict) else
+                             features[1 if feature_name == 'Description' else 2])
+                    maxima[arg_name] = max(maxima[arg_name], int(value))
+                if need_position:
+                    position_max = max(
+                        position_max, int(sample['incident_position']))
+        for arg_name, _ in unresolved:
+            setattr(args, arg_name, maxima[arg_name] + 1)
+        if need_position:
+            args.incident_num_positions = position_max + 1
+
+    for name in ('incident_num_descriptions', 'incident_num_types',
+                 'incident_num_positions'):
+        if getattr(args, name) < 1:
+            raise ValueError(f'Could not infer a positive --{name}')
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='TopoJEPA')
+
+    # basic config
+    parser.add_argument('--seed', type=int, default=2026,
+                        help='random seed for Python, NumPy, PyTorch, and CUDA')
+    parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
+    parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
+    parser.add_argument('--model', type=str, required=True, default='TopoJEPA',
+                        help='model name, options: [TopoJEPA, iTransformer, iInformer, iReformer, iFlowformer, iFlashformer]')
+
+    # data loader
+    parser.add_argument('--data', type=str, required=True, default='custom', help='dataset type')
+    parser.add_argument('--root_path', type=str, default='./data/electricity/', help='root path of the data file')
+    parser.add_argument('--data_path', type=str, default='electricity.csv', help='data csv file')
+    parser.add_argument('--fremont_file_pattern', type=str,
+                        default='incident_{flag}.npy',
+                        help='Fremont split filename pattern under root_path')
+    parser.add_argument('--fremont_traffic_feature', type=int, default=0,
+                        help='traffic channel selected from Fremont x_data/y_data')
+    parser.add_argument('--fremont_use_time_features', action='store_true',
+                        help='also use Fremont time-of-day/day-of-week channels; '
+                             'off means strictly traffic-only input')
+    parser.add_argument('--alameda_cities', type=str, default='',
+                        help='comma-separated cities to include for AlamedaCities; '
+                             'empty selects every non-excluded non-empty city')
+    parser.add_argument('--alameda_exclude_cities', type=str, default='Fremont',
+                        help='comma-separated cities excluded from AlamedaCities pretraining')
+    parser.add_argument('--alameda_sensors_file', type=str, default='sensors.csv',
+                        help='sensor metadata with a City column under root_path')
+    parser.add_argument('--incident', action='store_true',
+                        help='enable IGSTGNN-style incident conditioning for Fremont JEPA')
+    parser.add_argument('--incident_scale', type=float, default=1.0,
+                        help='scale applied to the temporally decayed incident effect')
+    parser.add_argument('--incident_sigma', type=float, default=1.0,
+                        help='positive Gaussian decay width over forecast steps')
+    parser.add_argument('--incident_num_descriptions', type=int, default=None,
+                        help='Description embedding cardinality; inferred by default')
+    parser.add_argument('--incident_num_types', type=int, default=None,
+                        help='incident Type embedding cardinality; inferred by default')
+    parser.add_argument('--incident_num_positions', type=int, default=None,
+                        help='incident_position embedding cardinality; inferred by default')
+    parser.add_argument('--features', type=str, default='M',
+                        help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
+    parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
+    parser.add_argument('--freq', type=str, default='h',
+                        help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
+    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+    parser.add_argument('--experiment_tag', type=str, default='',
+                        help='optional short, stable run name used for checkpoint/result directories')
+
+    # forecasting task
+    parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
+    parser.add_argument('--label_len', type=int, default=48, help='start token length') # no longer needed in inverted Transformers
+    parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
+
+    # model define
+    parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
+    parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
+    parser.add_argument('--c_out', type=int, default=7, help='output size') # applicable on arbitrary number of variates in inverted Transformers
+    parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
+    parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
+    parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
+    parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
+    parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
+    parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
+    parser.add_argument('--factor', type=int, default=1, help='attn factor')
+    parser.add_argument('--distil', action='store_false',
+                        help='whether to use distilling in encoder, using this argument means not using distilling',
+                        default=True)
+    parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
+    parser.add_argument('--embed', type=str, default='timeF',
+                        help='time features encoding, options:[timeF, fixed, learned]')
+    parser.add_argument('--activation', type=str, default='gelu', help='activation')
+    parser.add_argument('--output_attention', action='store_true', help='whether to output attention in ecoder')
+    parser.add_argument('--do_predict', action='store_true', help='whether to predict unseen future data')
+
+    # optimization
+    parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
+    parser.add_argument('--itr', type=int, default=1, help='experiments times')
+    parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
+    parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
+    parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
+    parser.add_argument('--log_interval', type=int, default=100,
+                        help='iterations between detailed branch-loss logs')
+    parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
+    parser.add_argument('--training_stage', type=str, default='joint',
+                        choices=['joint', 'pretrain', 'finetune'],
+                        help='joint: legacy forecast+JEPA training; pretrain: '
+                             'forecast + weighted JEPA objective; finetune: supervised forecast '
+                             'training initialized from --pretrained_checkpoint')
+    parser.add_argument(
+        '--pretrain_objective', type=str, default='forecast',
+        choices=['jepa', 'forecast', 'masked_forecast', 'reconstruction',
+                 'forecast_reconstruction'],
+        help='auxiliary pretraining task; JEPA is always active in staged pretraining')
+    parser.add_argument(
+        '--pretrain_mask_strategy', type=str, default='none',
+        choices=['none', 'random', 'temporal', 'sensor', 'block'],
+        help='input corruption used by masked forecast/reconstruction objectives')
+    parser.add_argument('--pretrain_mask_ratio', type=float, default=0.25,
+                        help='approximate fraction of input time-sensor values masked')
+    parser.add_argument('--reconstruction_weight', type=float, default=0.1,
+                        help='masked reconstruction loss coefficient')
+    parser.add_argument('--pretrained_checkpoint', type=str, default='',
+                        help='JEPA pretraining checkpoint used by the finetune stage')
+    parser.add_argument('--fremont_adaptation_root', default='',
+                        help='Verified former-test 60/20/20 split. Pretrain keeps original train/val.')
+    parser.add_argument('--eval_checkpoint', default='',
+                        help='Explicit weights for evaluation, allowing a new result tag')
+    parser.add_argument('--finetune_strategy', type=str, default='full',
+                        choices=['full', 'partial', 'frozen', 'gradual', 'lora'],
+                        help='parameters updated during the finetune stage')
+    parser.add_argument('--partial_unfreeze_layers', type=int, default=1,
+                        help='number of final online encoder layers unfrozen for partial finetuning; 0 trains the predictor/head only')
+    parser.add_argument('--lora_rank', type=int, default=8)
+    parser.add_argument('--lora_alpha', type=float, default=16.0)
+    parser.add_argument('--lora_dropout', type=float, default=0.0)
+    parser.add_argument('--lora_lr_scale', type=float, default=1.0,
+                        help='adapter LR multiplier; head uses learning_rate')
+    parser.add_argument('--gradual_head_epochs', type=int, default=2,
+                        help='initial predictor/head-only epochs')
+    parser.add_argument('--gradual_partial_epochs', type=int, default=3,
+                        help='subsequent epochs with final encoder layers unfrozen')
+    parser.add_argument('--encoder_lr_scale', type=float, default=0.1,
+                        help='encoder/predictor learning-rate multiplier during finetuning; the forecast head uses --learning_rate')
+    parser.add_argument('--keep_pretrained_head', action='store_true',
+                        help='legacy compatibility flag; fine-tuning always preserves the trained forecast head')
+    parser.add_argument('--des', type=str, default='test', help='exp description')
+    parser.add_argument('--loss', type=str, default='MSE', help='loss function')
+    parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
+    parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
+
+    # GPU
+    parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
+    parser.add_argument('--gpu', type=int, default=0, help='gpu')
+    parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
+    parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
+
+    # iTransformer
+    parser.add_argument('--exp_name', type=str, required=False, default='MTSF',
+                        help='experiemnt name, options:[MTSF, partial_train]')
+    parser.add_argument('--channel_independence', type=bool, default=False, help='whether to use channel_independence mechanism')
+    parser.add_argument('--inverse', action='store_true', help='inverse output data', default=False)
+    parser.add_argument('--class_strategy', type=str, default='projection', help='projection/average/cls_token')
+    parser.add_argument('--target_root_path', type=str, default='./data/electricity/', help='root path of the data file')
+    parser.add_argument('--target_data_path', type=str, default='electricity.csv', help='data file')
+    parser.add_argument('--efficient_training', type=bool, default=False, help='whether to use efficient_training (exp_name should be partial train)') # See Figure 8 of our paper for the detail
+    parser.add_argument('--use_norm', type=int, default=True, help='use norm and denorm')
+    parser.add_argument('--model_variant', type=str, default='original',
+                        choices=['original', 'predictor', 'jepa'],
+                        help='original, predictor, or TopoJEPA')
+    parser.add_argument('--jepa_weight', type=float, default=0.0,
+                        help='weight of JEPA loss; 0 makes jepa use the predictor-only training path')
+    parser.add_argument('--topo_weight', type=float, default=0.0,
+                        help='weight of variable-level H0 persistence-diagram Wasserstein loss')
+    parser.add_argument('--text_weight', type=float, default=0.0,
+                        help='weight of variable-level CLIP text-JEPA loss')
+    parser.add_argument('--text_embed_dim', type=int, default=512,
+                        help='dimension of cached CLIP text embeddings')
+    parser.add_argument('--text_embedding_dir', type=str, default='',
+                        help='directory containing precomputed CLIP embeddings')
+    parser.add_argument('--use_gnn', action='store_true',
+                        help='fuse a graph encoder when an adjacency matrix is available')
+    parser.add_argument('--adj_path', type=str, default='',
+                        help='square adjacency matrix in labeled CSV or .npy format')
+    parser.add_argument('--gnn_layers', type=int, default=2)
+    parser.add_argument('--gnn_dropout', type=float, default=0.1)
+    parser.add_argument('--alignment_weight', type=float, default=0.0,
+                        help='weight of Equation-6 Cramer alignment between GNN and Transformer tokens')
+    parser.add_argument('--ema_momentum', type=float, default=0.996,
+                        help='EMA momentum for the JEPA target encoder')
+    parser.add_argument('--forecast_mask', action='store_true',
+                        help='learn [future time,sensor] weights for the pretraining forecast loss')
+    parser.add_argument('--forecast_mask_floor', type=float, default=0.1,
+                        help='minimum forecast weight so no target is ignored')
+    parser.add_argument('--forecast_mask_target', type=float, default=0.5,
+                        help='target mean of the learned forecast weights')
+    parser.add_argument('--forecast_mask_budget_weight', type=float, default=0.1,
+                        help='weight for the mean-mask budget penalty')
+    parser.add_argument('--forecast_mask_entropy_weight', type=float, default=0.01,
+                        help='weight for negative Bernoulli entropy of mask probabilities')
+    parser.add_argument('--forecast_mask_smooth_weight', type=float, default=0.01,
+                        help='weight for temporal total variation of forecast weights')
+    parser.add_argument('--stgcn_kernel_size', type=int, default=3)
+    parser.add_argument('--stgcn_cheb_order', type=int, default=3)
+    parser.add_argument('--stgcn_blocks', type=int, default=2)
+    parser.add_argument('--stgcn_temporal_channels', type=int, default=64)
+    parser.add_argument('--stgcn_spatial_channels', type=int, default=16)
+    parser.add_argument('--stgcn_output_channels', type=int, default=64)
+    parser.add_argument('--partial_start_index', type=int, default=0, help='the start index of variates for partial training, '
+                                                                           'you can select [partial_start_index, min(enc_in + partial_start_index, N)]')
+
+    args = parser.parse_args()
+    if args.fremont_adaptation_root:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'Preprocess'))
+        from split_fremont_adaptation import verify_split
+        if args.data != 'Fremont' or args.training_stage not in ('pretrain', 'finetune'):
+            parser.error('Adaptation root requires staged Fremont training')
+        verify_split(args.fremont_adaptation_root, args.root_path, args.fremont_file_pattern,
+                     args.fremont_traffic_feature, args.seq_len, args.pred_len)
+        if args.is_training and not args.experiment_tag:
+            parser.error('Use a new --experiment_tag for adaptation experiments')
+
+    if args.training_stage in ('pretrain', 'finetune'):
+        if args.exp_name != 'MTSF':
+            parser.error('Staged training requires --exp_name MTSF')
+        if args.model != 'TopoJEPA' or args.model_variant != 'jepa':
+            parser.error('--training_stage pretrain/finetune requires '
+                         '--model TopoJEPA --model_variant jepa')
+        if (args.training_stage == 'finetune' and
+                args.data not in ('Fremont', 'AlamedaCities')):
+            parser.error('Staged fine-tuning supports Fremont or AlamedaCities')
+    if args.training_stage == 'pretrain':
+        if args.data not in ('Fremont', 'AlamedaCities'):
+            parser.error('Staged JEPA pretraining supports Fremont or AlamedaCities')
+        if args.jepa_weight <= 0:
+            parser.error('--training_stage pretrain requires --jepa_weight > 0')
+        if args.pred_len < args.seq_len:
+            parser.error('JEPA pretraining currently requires '
+                         '--pred_len >= --seq_len so the target encoder '
+                         'receives a complete target window')
+    masked_objectives = {
+        'masked_forecast', 'reconstruction', 'forecast_reconstruction'}
+    if args.pretrain_objective in masked_objectives:
+        if args.pretrain_mask_strategy == 'none':
+            parser.error(f'--pretrain_objective {args.pretrain_objective} '
+                         'requires --pretrain_mask_strategy')
+    elif args.pretrain_mask_strategy != 'none':
+        parser.error('--pretrain_mask_strategy is only valid for masked '
+                     'forecast/reconstruction objectives')
+    if not 0 < args.pretrain_mask_ratio < 1:
+        parser.error('--pretrain_mask_ratio must be in (0, 1)')
+    if not np.isfinite(args.reconstruction_weight) or args.reconstruction_weight < 0:
+        parser.error('--reconstruction_weight must be finite and non-negative')
+    if (args.pretrain_objective in ('reconstruction',
+                                    'forecast_reconstruction') and
+            args.reconstruction_weight == 0):
+        parser.error('A reconstruction objective requires '
+                     '--reconstruction_weight > 0')
+    if args.training_stage == 'finetune' and args.is_training:
+        if not args.pretrained_checkpoint:
+            parser.error('--training_stage finetune requires '
+                         '--pretrained_checkpoint')
+        if not os.path.isfile(args.pretrained_checkpoint):
+            parser.error('pretrained checkpoint not found: '
+                         f'{args.pretrained_checkpoint}')
+    if args.partial_unfreeze_layers < 0:
+        parser.error('--partial_unfreeze_layers must be non-negative')
+    if args.finetune_strategy == 'lora':
+        import math
+        if args.training_stage != 'finetune':
+            parser.error('lora requires --training_stage finetune')
+        if (args.lora_rank <= 0 or not math.isfinite(args.lora_alpha) or
+                args.lora_alpha <= 0 or not 0 <= args.lora_dropout < 1 or
+                not math.isfinite(args.lora_lr_scale) or args.lora_lr_scale <= 0):
+            parser.error('Invalid LoRA rank, alpha, dropout or learning-rate scale')
+    if args.finetune_strategy == 'gradual':
+        if args.training_stage != 'finetune':
+            parser.error('gradual requires --training_stage finetune')
+        if min(args.gradual_head_epochs, args.gradual_partial_epochs) < 0:
+            parser.error('gradual epoch counts must be non-negative')
+        if args.train_epochs <= args.gradual_head_epochs + args.gradual_partial_epochs:
+            parser.error('train_epochs must leave at least one full-unfreezing epoch')
+        if not 1 <= args.partial_unfreeze_layers <= args.e_layers:
+            parser.error('gradual partial_unfreeze_layers must be in [1, e_layers]')
+    if not 0 < args.encoder_lr_scale <= 1:
+        parser.error('--encoder_lr_scale must be in (0, 1]')
+    if args.forecast_mask:
+        import math
+        if args.model != 'TopoJEPA' or args.model_variant != 'jepa':
+            parser.error('--forecast_mask requires --model TopoJEPA --model_variant jepa')
+        if args.features != 'M':
+            parser.error('--forecast_mask currently requires --features M')
+        if args.training_stage not in ('pretrain', 'finetune'):
+            parser.error('--forecast_mask is supported only by staged pretrain/finetune')
+        if args.pretrain_objective not in (
+                'forecast', 'masked_forecast', 'forecast_reconstruction'):
+            parser.error('--forecast_mask requires a forecast-based '
+                         '--pretrain_objective')
+        if not 0 <= args.forecast_mask_floor < args.forecast_mask_target < 1:
+            parser.error('Require 0 <= forecast_mask_floor < forecast_mask_target < 1')
+        mask_weights = (args.forecast_mask_budget_weight,
+                        args.forecast_mask_entropy_weight,
+                        args.forecast_mask_smooth_weight)
+        if any(not math.isfinite(value) or value < 0 for value in mask_weights):
+            parser.error('Forecast-mask regularization weights must be finite and non-negative')
+
+    if args.incident:
+        if args.data != 'Fremont' or args.model != 'TopoJEPA':
+            parser.error('--incident currently requires --data Fremont --model TopoJEPA')
+        if args.exp_name == 'partial_train':
+            parser.error('--incident is not supported with --exp_name partial_train')
+        if args.text_weight > 0:
+            parser.error('--incident and --text_weight cannot share the optional batch slot')
+        if args.incident_sigma <= 0:
+            parser.error('--incident_sigma must be positive')
+        infer_incident_cardinalities(args)
+
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
+
+    args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
+
+    if args.use_gpu and args.use_multi_gpu:
+        args.devices = args.devices.replace(' ', '')
+        device_ids = args.devices.split(',')
+        args.device_ids = [int(id_) for id_ in device_ids]
+        args.gpu = args.device_ids[0]
+
+    print('Args in experiment:')
+    print(args)
+
+    def build_setting(iteration):
+        if args.experiment_tag:
+            return f'{args.experiment_tag}_{iteration}'
+        setting = (
+            f'{args.model_id}_{args.model}_{args.data}'
+            f'_ft{args.features}_sl{args.seq_len}_ll{args.label_len}'
+            f'_pl{args.pred_len}_dm{args.d_model}_nh{args.n_heads}'
+            f'_el{args.e_layers}_dl{args.d_layers}_df{args.d_ff}'
+            f'_fc{args.factor}_eb{args.embed}_dt{args.distil}'
+            f'_{args.des}_seed{args.seed}'
+            f'_{args.class_strategy}_{args.model_variant}'
+            f'_jw{args.jepa_weight}_tw{args.topo_weight}'
+            f'_textw{args.text_weight}_aw{args.alignment_weight}'
+            f'_gnn{int(args.use_gnn)}'
+            f'_stage{args.training_stage}'
+            f'_pre{args.pretrain_objective}'
+        )
+        if args.pretrain_mask_strategy != 'none':
+            setting += (f'_mask{args.pretrain_mask_strategy}'
+                        f'_mr{args.pretrain_mask_ratio}')
+        if args.training_stage == 'finetune':
+            setting += f'_{args.finetune_strategy}'
+            if args.finetune_strategy == 'lora':
+                setting += (f'_r{args.lora_rank}_a{args.lora_alpha}'
+                            f'_d{args.lora_dropout}_lr{args.lora_lr_scale}')
+            if args.finetune_strategy == 'gradual':
+                setting += (f'_h{args.gradual_head_epochs}'
+                            f'_p{args.gradual_partial_epochs}'
+                            f'_l{args.partial_unfreeze_layers}')
+        if args.incident:
+            setting += (f'_incident_s{args.incident_sigma}'
+                        f'_scale{args.incident_scale}')
+        return f'{setting}_{iteration}'
+
+    if args.exp_name == 'partial_train': # See Figure 8 of our paper, for the detail
+        Exp = Exp_Long_Term_Forecast_Partial
+    else: # MTSF: multivariate time series forecasting
+        Exp = Exp_Long_Term_Forecast
+
+
+    if args.is_training:
+        for ii in range(args.itr):
+            # setting record of experiments
+            setting = build_setting(ii)
+
+            exp = Exp(args)  # set experiments
+            if args.fremont_adaptation_root:
+                from pathlib import Path
+                import json
+                out = Path(args.checkpoints) / setting
+                if out.exists() or (Path('results') / setting).exists():
+                    raise FileExistsError(f'Refusing to overwrite adaptation run: {setting}')
+                out.mkdir(parents=True)
+                (out / 'protocol.json').write_text(json.dumps(vars(args), indent=2))
+                (out / 'split_manifest.json').write_text(
+                    (Path(args.fremont_adaptation_root) / 'split_manifest.json').read_text())
+            print('>>>>>>>start {} : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(
+                args.training_stage, setting))
+            exp.train(setting)
+
+            if args.training_stage == 'pretrain':
+                print('>>>>>>>evaluating pretraining : {}<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                exp.test_pretrain(setting)
+            else:
+                print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                exp.test(setting)
+
+            if args.do_predict and args.training_stage != 'pretrain':
+                print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+                exp.predict(setting, True)
+
+            torch.cuda.empty_cache()
+    else:
+        ii = 0
+        setting = build_setting(ii)
+
+        exp = Exp(args)  # set experiments
+        if args.eval_checkpoint:
+            if args.fremont_adaptation_root and os.path.exists(os.path.join('results', setting)):
+                raise FileExistsError(f'Refusing to overwrite evaluation: {setting}')
+            weights = torch.load(args.eval_checkpoint, map_location=exp.device)
+            weights = {(k[7:] if k.startswith('module.') else k): v for k, v in weights.items()}
+            exp._core_model().load_state_dict(weights, strict=True)
+            exp.test(setting)
+            if args.fremont_adaptation_root:
+                import json
+                from pathlib import Path
+                from split_fremont_adaptation import sha256
+                out = Path('results') / setting
+                (out / 'split_manifest.json').write_text(
+                    (Path(args.fremont_adaptation_root) / 'split_manifest.json').read_text())
+                (out / 'evaluation.json').write_text(json.dumps(dict(
+                    checkpoint=str(Path(args.eval_checkpoint).resolve()),
+                    checkpoint_sha256=sha256(args.eval_checkpoint),
+                    arguments=vars(args)), indent=2))
+            raise SystemExit(0)
+        if args.training_stage == 'pretrain':
+            print('>>>>>>>evaluating pretraining : {}<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            exp.test_pretrain(setting, load=True)
+        else:
+            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            exp.test(setting, test=1)
+        torch.cuda.empty_cache()

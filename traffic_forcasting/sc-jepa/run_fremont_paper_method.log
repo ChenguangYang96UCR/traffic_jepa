@@ -1,0 +1,13 @@
+nohup: ignoring input
+Device=cuda:0; downstream split sizes={'train': 10280, 'val': 2203, 'test': 2204}
+Pretrain split sizes={'train': 860436, 'val': 95604, 'test': 204972}
+pretrain: trainable=5,878,694/10,728,521; source=None
+pretrain epoch 1/100: train=-0.015193 val_total=-0.021401
+Traceback (most recent call last):
+  File "/home/ADS/cyang314/ucr_work/traffic_jepa/sc-jepa/train.py", line 362, in <module>
+    main()
+  File "/home/ADS/cyang314/ucr_work/traffic_jepa/sc-jepa/train.py", line 333, in main
+    source = fit('pretrain', args, config, pretrain_datasets, device)
+  File "/home/ADS/cyang314/ucr_work/traffic_jepa/sc-jepa/train.py", line 154, in fit
+    raise ValueError(f'Nonfinite loss at {stage} epoch {epoch + 1}')
+ValueError: Nonfinite loss at pretrain epoch 2

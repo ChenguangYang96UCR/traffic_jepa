@@ -1,0 +1,195 @@
+nohup: ignoring input
+Args in experiment:
+Namespace(seed=2026, is_training=1, model_id='Fremont_full_finetune', model='TopoJEPA', data='Fremont', root_path='./dataset/Fremont/', data_path='electricity.csv', fremont_file_pattern='incident_{flag}.npy', fremont_traffic_feature=0, fremont_use_time_features=False, alameda_cities='', alameda_exclude_cities='Fremont', alameda_sensors_file='sensors.csv', incident=False, incident_scale=1.0, incident_sigma=1.0, incident_num_descriptions=None, incident_num_types=None, incident_num_positions=None, features='M', target='OT', freq='t', checkpoints='./checkpoints/', experiment_tag='Fremont_masked_pretrain_full', seq_len=12, label_len=6, pred_len=12, enc_in=93, dec_in=93, c_out=93, d_model=128, n_heads=8, e_layers=2, d_layers=1, d_ff=256, moving_avg=25, factor=1, distil=True, dropout=0.1, embed='timeF', activation='gelu', output_attention=False, do_predict=False, num_workers=4, itr=1, train_epochs=20, batch_size=32, patience=5, log_interval=100, learning_rate=0.0001, training_stage='finetune', pretrained_checkpoint='./checkpoints/Fremont_masked_pretrain_0/checkpoint.pth', fremont_adaptation_root='', eval_checkpoint='', finetune_strategy='full', partial_unfreeze_layers=1, lora_rank=8, lora_alpha=16.0, lora_dropout=0.0, lora_lr_scale=1.0, gradual_head_epochs=2, gradual_partial_epochs=3, encoder_lr_scale=0.1, keep_pretrained_head=False, des='jepa_pretrain_full_finetune', loss='MSE', lradj='type1', use_amp=False, use_gpu=True, gpu=0, use_multi_gpu=False, devices='0,1,2,3', exp_name='MTSF', channel_independence=False, inverse=False, class_strategy='projection', target_root_path='./data/electricity/', target_data_path='electricity.csv', efficient_training=False, use_norm=True, model_variant='jepa', jepa_weight=0.0, topo_weight=0.0, text_weight=0.0, text_embed_dim=512, text_embedding_dir='', use_gnn=False, adj_path='', gnn_layers=2, gnn_dropout=0.1, alignment_weight=0.0, ema_momentum=0.996, forecast_mask=True, forecast_mask_floor=0.1, forecast_mask_target=0.5, forecast_mask_budget_weight=0.1, forecast_mask_entropy_weight=0.01, forecast_mask_smooth_weight=0.01, stgcn_kernel_size=3, stgcn_cheb_order=3, stgcn_blocks=2, stgcn_temporal_channels=64, stgcn_spatial_channels=16, stgcn_output_channels=64, partial_start_index=0)
+Use GPU: cuda:0
+>>>>>>>start finetune : Fremont_masked_pretrain_full_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+Loaded JEPA checkpoint: ./checkpoints/Fremont_masked_pretrain_0/checkpoint.pth
+Fine-tune strategy: full; trainable parameters: 301,708/656,184 (45.98%)
+train 10280
+val 2203
+test 2204
+	iters: 100, epoch: 1 | total: 0.0192978 | forecast: 0.0192978 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0108s/iter; left time: 68.6428s
+	iters: 200, epoch: 1 | total: 0.0153751 | forecast: 0.0153751 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0044s/iter; left time: 27.5711s
+	iters: 300, epoch: 1 | total: 0.0157035 | forecast: 0.0157035 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0044s/iter; left time: 26.7447s
+Epoch: 1 cost time: 2.369049549102783
+Epoch: 1, Steps: 322 | Train Loss: 0.0155692 Vali Loss: 0.0155006 Test Loss: 0.0154583
+Validation loss decreased (inf --> 0.015501).  Saving model ...
+Updating learning rate to [1e-05, 0.0001]
+	iters: 100, epoch: 2 | total: 0.0144258 | forecast: 0.0144258 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0489s/iter; left time: 294.5485s
+	iters: 200, epoch: 2 | total: 0.0166686 | forecast: 0.0166686 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0043s/iter; left time: 25.4410s
+	iters: 300, epoch: 2 | total: 0.0191109 | forecast: 0.0191109 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 24.7256s
+Epoch: 2 cost time: 1.7217340469360352
+Epoch: 2, Steps: 322 | Train Loss: 0.0154735 Vali Loss: 0.0154306 Test Loss: 0.0153963
+Validation loss decreased (0.015501 --> 0.015431).  Saving model ...
+Updating learning rate to [5e-06, 5e-05]
+	iters: 100, epoch: 3 | total: 0.0155868 | forecast: 0.0155868 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0472s/iter; left time: 268.8385s
+	iters: 200, epoch: 3 | total: 0.0168049 | forecast: 0.0168049 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0038s/iter; left time: 21.0444s
+	iters: 300, epoch: 3 | total: 0.0155351 | forecast: 0.0155351 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0041s/iter; left time: 22.5075s
+Epoch: 3 cost time: 1.5417563915252686
+Epoch: 3, Steps: 322 | Train Loss: 0.0154076 Vali Loss: 0.0154170 Test Loss: 0.0153788
+Validation loss decreased (0.015431 --> 0.015417).  Saving model ...
+Updating learning rate to [2.5e-06, 2.5e-05]
+	iters: 100, epoch: 4 | total: 0.0133585 | forecast: 0.0133585 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0462s/iter; left time: 248.5088s
+	iters: 200, epoch: 4 | total: 0.0170317 | forecast: 0.0170317 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0045s/iter; left time: 23.5967s
+	iters: 300, epoch: 4 | total: 0.0157999 | forecast: 0.0157999 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0044s/iter; left time: 22.7097s
+Epoch: 4 cost time: 1.6929335594177246
+Epoch: 4, Steps: 322 | Train Loss: 0.0153965 Vali Loss: 0.0153835 Test Loss: 0.0153560
+Validation loss decreased (0.015417 --> 0.015383).  Saving model ...
+Updating learning rate to [1.25e-06, 1.25e-05]
+	iters: 100, epoch: 5 | total: 0.0159712 | forecast: 0.0159712 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0463s/iter; left time: 233.9527s
+	iters: 200, epoch: 5 | total: 0.0183966 | forecast: 0.0183966 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0039s/iter; left time: 19.4558s
+	iters: 300, epoch: 5 | total: 0.0183549 | forecast: 0.0183549 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0037s/iter; left time: 18.1645s
+Epoch: 5 cost time: 1.6028482913970947
+Epoch: 5, Steps: 322 | Train Loss: 0.0153804 Vali Loss: 0.0153868 Test Loss: 0.0153498
+EarlyStopping counter: 1 out of 5
+Updating learning rate to [6.25e-07, 6.25e-06]
+	iters: 100, epoch: 6 | total: 0.0142538 | forecast: 0.0142538 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0464s/iter; left time: 219.5651s
+	iters: 200, epoch: 6 | total: 0.0137359 | forecast: 0.0137359 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0038s/iter; left time: 17.4251s
+	iters: 300, epoch: 6 | total: 0.0129043 | forecast: 0.0129043 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0038s/iter; left time: 17.0587s
+Epoch: 6 cost time: 1.5425474643707275
+Epoch: 6, Steps: 322 | Train Loss: 0.0153829 Vali Loss: 0.0153816 Test Loss: 0.0153483
+Validation loss decreased (0.015383 --> 0.015382).  Saving model ...
+Updating learning rate to [3.125e-07, 3.125e-06]
+	iters: 100, epoch: 7 | total: 0.0138778 | forecast: 0.0138778 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0474s/iter; left time: 208.9471s
+	iters: 200, epoch: 7 | total: 0.0156109 | forecast: 0.0156109 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0044s/iter; left time: 18.9572s
+	iters: 300, epoch: 7 | total: 0.0124882 | forecast: 0.0124882 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0043s/iter; left time: 18.3046s
+Epoch: 7 cost time: 1.7112185955047607
+Epoch: 7, Steps: 322 | Train Loss: 0.0153707 Vali Loss: 0.0153906 Test Loss: 0.0153499
+EarlyStopping counter: 1 out of 5
+Updating learning rate to [1.5625e-07, 1.5625e-06]
+	iters: 100, epoch: 8 | total: 0.0151968 | forecast: 0.0151968 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0463s/iter; left time: 189.3798s
+	iters: 200, epoch: 8 | total: 0.0159252 | forecast: 0.0159252 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 16.8495s
+	iters: 300, epoch: 8 | total: 0.0187445 | forecast: 0.0187445 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 16.2048s
+Epoch: 8 cost time: 1.6802163124084473
+Epoch: 8, Steps: 322 | Train Loss: 0.0153762 Vali Loss: 0.0153773 Test Loss: 0.0153485
+Validation loss decreased (0.015382 --> 0.015377).  Saving model ...
+Updating learning rate to [7.8125e-08, 7.8125e-07]
+	iters: 100, epoch: 9 | total: 0.0139360 | forecast: 0.0139360 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0466s/iter; left time: 175.5387s
+	iters: 200, epoch: 9 | total: 0.0130464 | forecast: 0.0130464 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0036s/iter; left time: 13.3163s
+	iters: 300, epoch: 9 | total: 0.0137691 | forecast: 0.0137691 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0036s/iter; left time: 12.8927s
+Epoch: 9 cost time: 1.4940087795257568
+Epoch: 9, Steps: 322 | Train Loss: 0.0153923 Vali Loss: 0.0153802 Test Loss: 0.0153483
+EarlyStopping counter: 1 out of 5
+Updating learning rate to [3.90625e-08, 3.90625e-07]
+	iters: 100, epoch: 10 | total: 0.0143567 | forecast: 0.0143567 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0463s/iter; left time: 159.4710s
+	iters: 200, epoch: 10 | total: 0.0145118 | forecast: 0.0145118 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0037s/iter; left time: 12.3275s
+	iters: 300, epoch: 10 | total: 0.0159002 | forecast: 0.0159002 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0036s/iter; left time: 11.8105s
+Epoch: 10 cost time: 1.5246100425720215
+Epoch: 10, Steps: 322 | Train Loss: 0.0153608 Vali Loss: 0.0153870 Test Loss: 0.0153481
+EarlyStopping counter: 2 out of 5
+Updating learning rate to [1.953125e-08, 1.953125e-07]
+	iters: 100, epoch: 11 | total: 0.0162384 | forecast: 0.0162384 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0466s/iter; left time: 145.5065s
+	iters: 200, epoch: 11 | total: 0.0134135 | forecast: 0.0134135 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 12.6473s
+	iters: 300, epoch: 11 | total: 0.0146520 | forecast: 0.0146520 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 12.2874s
+Epoch: 11 cost time: 1.6624243259429932
+Epoch: 11, Steps: 322 | Train Loss: 0.0153726 Vali Loss: 0.0153825 Test Loss: 0.0153480
+EarlyStopping counter: 3 out of 5
+Updating learning rate to [9.765625e-09, 9.765625e-08]
+	iters: 100, epoch: 12 | total: 0.0189671 | forecast: 0.0189671 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0466s/iter; left time: 130.4691s
+	iters: 200, epoch: 12 | total: 0.0158418 | forecast: 0.0158418 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0043s/iter; left time: 11.5224s
+	iters: 300, epoch: 12 | total: 0.0112935 | forecast: 0.0112935 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 11.0089s
+Epoch: 12 cost time: 1.6895623207092285
+Epoch: 12, Steps: 322 | Train Loss: 0.0153711 Vali Loss: 0.0153825 Test Loss: 0.0153480
+EarlyStopping counter: 4 out of 5
+Updating learning rate to [4.8828125e-09, 4.8828125e-08]
+	iters: 100, epoch: 13 | total: 0.0137012 | forecast: 0.0137012 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0473s/iter; left time: 117.1547s
+	iters: 200, epoch: 13 | total: 0.0151573 | forecast: 0.0151573 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 9.8997s
+	iters: 300, epoch: 13 | total: 0.0193687 | forecast: 0.0193687 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 9.5435s
+Epoch: 13 cost time: 1.6853067874908447
+Epoch: 13, Steps: 322 | Train Loss: 0.0153620 Vali Loss: 0.0153742 Test Loss: 0.0153480
+Validation loss decreased (0.015377 --> 0.015374).  Saving model ...
+Updating learning rate to [2.44140625e-09, 2.44140625e-08]
+	iters: 100, epoch: 14 | total: 0.0199640 | forecast: 0.0199640 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0471s/iter; left time: 101.5508s
+	iters: 200, epoch: 14 | total: 0.0124299 | forecast: 0.0124299 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0041s/iter; left time: 8.5037s
+	iters: 300, epoch: 14 | total: 0.0145166 | forecast: 0.0145166 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0041s/iter; left time: 8.0514s
+Epoch: 14 cost time: 1.6726493835449219
+Epoch: 14, Steps: 322 | Train Loss: 0.0153758 Vali Loss: 0.0153799 Test Loss: 0.0153480
+EarlyStopping counter: 1 out of 5
+Updating learning rate to [1.220703125e-09, 1.220703125e-08]
+	iters: 100, epoch: 15 | total: 0.0151601 | forecast: 0.0151601 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0466s/iter; left time: 85.4558s
+	iters: 200, epoch: 15 | total: 0.0154223 | forecast: 0.0154223 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0043s/iter; left time: 7.3693s
+	iters: 300, epoch: 15 | total: 0.0135251 | forecast: 0.0135251 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0043s/iter; left time: 6.9410s
+Epoch: 15 cost time: 1.602529764175415
+Epoch: 15, Steps: 322 | Train Loss: 0.0153579 Vali Loss: 0.0153844 Test Loss: 0.0153480
+EarlyStopping counter: 2 out of 5
+Updating learning rate to [6.103515625e-10, 6.103515625e-09]
+	iters: 100, epoch: 16 | total: 0.0158450 | forecast: 0.0158450 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0459s/iter; left time: 69.2901s
+	iters: 200, epoch: 16 | total: 0.0132629 | forecast: 0.0132629 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 5.8978s
+	iters: 300, epoch: 16 | total: 0.0153110 | forecast: 0.0153110 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0043s/iter; left time: 5.6458s
+Epoch: 16 cost time: 1.6558475494384766
+Epoch: 16, Steps: 322 | Train Loss: 0.0153760 Vali Loss: 0.0153752 Test Loss: 0.0153480
+EarlyStopping counter: 3 out of 5
+Updating learning rate to [3.0517578125e-10, 3.0517578125e-09]
+	iters: 100, epoch: 17 | total: 0.0191611 | forecast: 0.0191611 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0469s/iter; left time: 55.7681s
+	iters: 200, epoch: 17 | total: 0.0130301 | forecast: 0.0130301 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 4.5208s
+	iters: 300, epoch: 17 | total: 0.0155008 | forecast: 0.0155008 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 4.1107s
+Epoch: 17 cost time: 1.6661038398742676
+Epoch: 17, Steps: 322 | Train Loss: 0.0153666 Vali Loss: 0.0153779 Test Loss: 0.0153480
+EarlyStopping counter: 4 out of 5
+Updating learning rate to [1.52587890625e-10, 1.52587890625e-09]
+	iters: 100, epoch: 18 | total: 0.0194546 | forecast: 0.0194546 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0472s/iter; left time: 40.9126s
+	iters: 200, epoch: 18 | total: 0.0120900 | forecast: 0.0120900 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0042s/iter; left time: 3.2117s
+	iters: 300, epoch: 18 | total: 0.0141339 | forecast: 0.0141339 | jepa: 0.0000000 (weighted: 0.0000000) | topo: 0.0000000 (weighted: 0.0000000) | text: 0.0000000 (weighted: 0.0000000) | alignment: 0.0000000 (weighted: 0.0000000)
+	speed: 0.0043s/iter; left time: 2.8450s
+Epoch: 18 cost time: 1.6802940368652344
+Epoch: 18, Steps: 322 | Train Loss: 0.0153619 Vali Loss: 0.0153776 Test Loss: 0.0153480
+EarlyStopping counter: 5 out of 5
+Early stopping
+>>>>>>>testing : Fremont_masked_pretrain_full_0<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+test 2204
+test shape: (2204, 1, 12, 93) (2204, 1, 12, 93)
+test shape: (2204, 12, 93) (2204, 12, 93)
+mse:0.015347964130342007, mae:0.0647081807255745

@@ -1,0 +1,77 @@
+from traffic_forcasting.TopoJEPA.data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Solar, Dataset_PEMS, \
+    Dataset_Pred, Dataset_Fremont_NPY, Dataset_Alameda_Cities_NPY
+from torch.utils.data import DataLoader
+
+data_dict = {
+    'ETTh1': Dataset_ETT_hour,
+    'ETTh2': Dataset_ETT_hour,
+    'ETTm1': Dataset_ETT_minute,
+    'ETTm2': Dataset_ETT_minute,
+    'Solar': Dataset_Solar,
+    'PEMS': Dataset_PEMS,
+    'custom': Dataset_Custom,
+    'Fremont': Dataset_Fremont_NPY,
+    'AlamedaCities': Dataset_Alameda_Cities_NPY,
+}
+
+
+def data_provider(args, flag):
+    Data = data_dict[args.data]
+    timeenc = 0 if args.embed != 'timeF' else 1
+
+    if flag == 'test':
+        shuffle_flag = False
+        drop_last = False
+        batch_size = 1  # bsz=1 for evaluation
+        freq = args.freq
+    elif flag == 'pred':
+        shuffle_flag = False
+        drop_last = False
+        batch_size = 1
+        freq = args.freq
+        Data = Dataset_Pred
+    else:
+        shuffle_flag = True
+        drop_last = False
+        batch_size = args.batch_size  # bsz for train and valid
+        freq = args.freq
+
+    data_kwargs = dict(
+        root_path=args.root_path,
+        data_path=args.data_path,
+        flag=flag,
+        size=[args.seq_len, args.label_len, args.pred_len,
+              max(args.seq_len, args.pred_len)],
+        features=args.features,
+        target=args.target,
+        timeenc=timeenc,
+        freq=freq,
+    )
+    if Data is Dataset_Custom:
+        data_kwargs['text_embedding_dir'] = getattr(args, 'text_embedding_dir', '')
+    elif Data in (Dataset_Fremont_NPY, Dataset_Alameda_Cities_NPY):
+        adaptation = getattr(args, 'fremont_adaptation_root', '')
+        if adaptation and (flag == 'test' or args.training_stage == 'finetune'):
+            data_kwargs['root_path'] = adaptation
+        data_kwargs['traffic_feature'] = getattr(
+            args, 'fremont_traffic_feature', 0)
+        data_kwargs['use_time_features'] = getattr(
+            args, 'fremont_use_time_features', False)
+        data_kwargs['use_incident'] = getattr(args, 'incident', False)
+        data_kwargs['file_pattern'] = getattr(
+            args, 'fremont_file_pattern', 'incident_{flag}.npy')
+        if Data is Dataset_Alameda_Cities_NPY:
+            data_kwargs['cities'] = getattr(args, 'alameda_cities', '')
+            data_kwargs['exclude_cities'] = getattr(
+                args, 'alameda_exclude_cities', 'Fremont')
+            data_kwargs['sensors_file'] = getattr(
+                args, 'alameda_sensors_file', 'sensors.csv')
+    data_set = Data(**data_kwargs)
+    print(flag, len(data_set))
+    data_loader = DataLoader(
+        data_set,
+        batch_size=batch_size,
+        shuffle=shuffle_flag,
+        num_workers=args.num_workers,
+        drop_last=drop_last)
+    return data_set, data_loader

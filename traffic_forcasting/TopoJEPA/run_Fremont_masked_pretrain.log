@@ -1,0 +1,64 @@
+nohup: ignoring input
+Args in experiment:
+Namespace(seed=2026, is_training=1, model_id='Fremont_pretrain', model='TopoJEPA', data='Fremont', root_path='./dataset/Fremont/', data_path='electricity.csv', fremont_file_pattern='incident_{flag}.npy', fremont_traffic_feature=0, fremont_use_time_features=False, alameda_cities='', alameda_exclude_cities='Fremont', alameda_sensors_file='sensors.csv', incident=False, incident_scale=1.0, incident_sigma=1.0, incident_num_descriptions=None, incident_num_types=None, incident_num_positions=None, features='M', target='OT', freq='t', checkpoints='./checkpoints/', experiment_tag='Fremont_masked_pretrain', seq_len=12, label_len=6, pred_len=12, enc_in=93, dec_in=93, c_out=93, d_model=128, n_heads=8, e_layers=2, d_layers=1, d_ff=256, moving_avg=25, factor=1, distil=True, dropout=0.1, embed='timeF', activation='gelu', output_attention=False, do_predict=False, num_workers=4, itr=1, train_epochs=20, batch_size=32, patience=5, log_interval=100, learning_rate=0.0001, training_stage='pretrain', pretrained_checkpoint='', fremont_adaptation_root='', eval_checkpoint='', finetune_strategy='full', partial_unfreeze_layers=1, lora_rank=8, lora_alpha=16.0, lora_dropout=0.0, lora_lr_scale=1.0, gradual_head_epochs=2, gradual_partial_epochs=3, encoder_lr_scale=0.1, keep_pretrained_head=False, des='forecast_plus_jepa_pretrain', loss='MSE', lradj='type1', use_amp=False, use_gpu=True, gpu=0, use_multi_gpu=False, devices='0,1,2,3', exp_name='MTSF', channel_independence=False, inverse=False, class_strategy='projection', target_root_path='./data/electricity/', target_data_path='electricity.csv', efficient_training=False, use_norm=True, model_variant='jepa', jepa_weight=0.1, topo_weight=0.0, text_weight=0.0, text_embed_dim=512, text_embedding_dir='', use_gnn=False, adj_path='', gnn_layers=2, gnn_dropout=0.1, alignment_weight=0.0, ema_momentum=0.996, forecast_mask=True, forecast_mask_floor=0.1, forecast_mask_target=0.5, forecast_mask_budget_weight=0.1, forecast_mask_entropy_weight=0.01, forecast_mask_smooth_weight=0.01, stgcn_kernel_size=3, stgcn_cheb_order=3, stgcn_blocks=2, stgcn_temporal_channels=64, stgcn_spatial_channels=16, stgcn_output_channels=64, partial_start_index=0)
+Use GPU: cuda:0
+>>>>>>>start pretrain : Fremont_masked_pretrain_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 10280
+val 2203
+JEPA pretraining trainable parameters: 306,488/656,184 (46.71%)
+Pretrain Epoch: 1 | train total: 0.0909383, jepa: 0.7553753 | val total: 0.0439224, jepa: 0.3537569 | time: 3.44s
+Forecast MSE | train: 0.0242858 | val: 0.0172262
+Masked forecast MSE | train: 0.0214531 | val: 0.0144449 | mask mean/min/max (val): 0.5012/0.1361/0.7202
+Validation loss decreased (inf --> 0.017226).  Saving model ...
+Updating learning rate to [0.0001]
+Pretrain Epoch: 2 | train total: 0.0311303, jepa: 0.2324836 | val total: 0.0241493, jepa: 0.1673858 | time: 2.74s
+Forecast MSE | train: 0.0163760 | val: 0.0159518
+Masked forecast MSE | train: 0.0139267 | val: 0.0135359 | mask mean/min/max (val): 0.5022/0.1187/0.6765
+Validation loss decreased (0.017226 --> 0.015952).  Saving model ...
+Updating learning rate to [5e-05]
+Pretrain Epoch: 3 | train total: 0.0228767, jepa: 0.1555937 | val total: 0.0222026, jepa: 0.1502371 | time: 2.67s
+Forecast MSE | train: 0.0158727 | val: 0.0158274
+Masked forecast MSE | train: 0.0134231 | val: 0.0133103 | mask mean/min/max (val): 0.5106/0.1142/0.6887
+Validation loss decreased (0.015952 --> 0.015827).  Saving model ...
+Updating learning rate to [2.5e-05]
+Pretrain Epoch: 4 | train total: 0.0230988, jepa: 0.1603728 | val total: 0.0238864, jepa: 0.1693312 | time: 2.96s
+Forecast MSE | train: 0.0157636 | val: 0.0157663
+Masked forecast MSE | train: 0.0131484 | val: 0.0130562 | mask mean/min/max (val): 0.5074/0.1110/0.6892
+Validation loss decreased (0.015827 --> 0.015766).  Saving model ...
+Updating learning rate to [1.25e-05]
+Pretrain Epoch: 5 | train total: 0.0252563, jepa: 0.1839100 | val total: 0.0263523, jepa: 0.1955580 | time: 2.96s
+Forecast MSE | train: 0.0157411 | val: 0.0157460
+Masked forecast MSE | train: 0.0129225 | val: 0.0128784 | mask mean/min/max (val): 0.5053/0.1094/0.6954
+Validation loss decreased (0.015766 --> 0.015746).  Saving model ...
+Updating learning rate to [6.25e-06]
+Pretrain Epoch: 6 | train total: 0.0278157, jepa: 0.2106753 | val total: 0.0287337, jepa: 0.2205992 | time: 2.95s
+Forecast MSE | train: 0.0157545 | val: 0.0157624
+Masked forecast MSE | train: 0.0127683 | val: 0.0127202 | mask mean/min/max (val): 0.5030/0.1077/0.7038
+EarlyStopping counter: 1 out of 5
+Updating learning rate to [3.125e-06]
+Pretrain Epoch: 7 | train total: 0.0300295, jepa: 0.2335822 | val total: 0.0307230, jepa: 0.2409475 | time: 2.93s
+Forecast MSE | train: 0.0157915 | val: 0.0158194
+Masked forecast MSE | train: 0.0126590 | val: 0.0126425 | mask mean/min/max (val): 0.5019/0.1074/0.7114
+EarlyStopping counter: 2 out of 5
+Updating learning rate to [1.5625e-06]
+Pretrain Epoch: 8 | train total: 0.0318926, jepa: 0.2525127 | val total: 0.0322974, jepa: 0.2568641 | time: 2.90s
+Forecast MSE | train: 0.0158326 | val: 0.0158505
+Masked forecast MSE | train: 0.0125968 | val: 0.0126009 | mask mean/min/max (val): 0.4993/0.1067/0.7148
+EarlyStopping counter: 3 out of 5
+Updating learning rate to [7.8125e-07]
+Pretrain Epoch: 9 | train total: 0.0332019, jepa: 0.2658404 | val total: 0.0334178, jepa: 0.2679039 | time: 2.89s
+Forecast MSE | train: 0.0158450 | val: 0.0158938
+Masked forecast MSE | train: 0.0125476 | val: 0.0125992 | mask mean/min/max (val): 0.4985/0.1070/0.7167
+EarlyStopping counter: 4 out of 5
+Updating learning rate to [3.90625e-07]
+Pretrain Epoch: 10 | train total: 0.0340605, jepa: 0.2742540 | val total: 0.0340512, jepa: 0.2743773 | time: 2.96s
+Forecast MSE | train: 0.0158985 | val: 0.0159080
+Masked forecast MSE | train: 0.0125551 | val: 0.0125815 | mask mean/min/max (val): 0.4975/0.1075/0.7184
+EarlyStopping counter: 5 out of 5
+Early stopping
+Best pretraining checkpoint: ./checkpoints/Fremont_masked_pretrain_0/checkpoint.pth
+>>>>>>>evaluating pretraining : Fremont_masked_pretrain_0<<<<<<<<<<<<<<<<<<<<<<<<
+test 2204
+test shape: (2204, 1, 12, 93) (2204, 1, 12, 93)
+test shape: (2204, 12, 93) (2204, 12, 93)
+mse:0.015717944130301476, mae:0.06548328697681427
