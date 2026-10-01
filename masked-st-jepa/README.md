@@ -188,3 +188,14 @@ SEED=2026 \
 bash scripts/run_comparison.sh \
 > run_k19.log 2>&1 &
 ```
+
+
+```bash
+nohup env \
+DATA_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/masked-st-jepa/dataset/Fremont \
+RUN_ROOT=runs/comparison_random_k9 \
+MASK_MODE=random \
+MASK_K=9 \
+bash scripts/run_comparison.sh \
+> comparison_random_k9.log 2>&1 &
+```

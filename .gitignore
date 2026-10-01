@@ -9,3 +9,4 @@ traffic_forcasting/TopoJEPA/text_embedding_cache
 traffic_forcasting/XTraffic
 .log
 masked-st-jepa/dataset
+staeformer-jepa/runs
