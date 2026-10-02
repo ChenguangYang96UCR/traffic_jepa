@@ -2,16 +2,30 @@
 import argparse
 import json
 from pathlib import Path
+import re
+
+
+def slugify(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--target-city", default="Fremont")
+    parser.add_argument("--source-city", default="Oakland")
     args = parser.parse_args()
+    target = args.target_city
+    source = args.source_city
+    target_slug = slugify(target)
+    source_slug = slugify(source)
     experiments = [
-        ("Fremont T -> Fremont S", "exp1_fremont_fremont"),
-        ("Oakland T -> Fremont S", "exp2_oakland_fremont"),
-        ("Oakland T -> Oakland S -> Fremont", "exp3_oakland_oakland_fremont"),
+        (f"{target} T -> {target} S", f"exp1_{target_slug}_{target_slug}"),
+        (f"{source} T -> {target} S", f"exp2_{source_slug}_{target_slug}"),
+        (
+            f"{source} T -> {source} S -> {target}",
+            f"exp3_{source_slug}_{source_slug}_{target_slug}",
+        ),
     ]
     methods = [
         ("Scratch", "staeformer_scratch"),
@@ -35,7 +49,9 @@ def main():
             )
     summary = "\n".join(lines)
     print(summary)
-    (args.root / "three_experiment_summary.txt").write_text(summary + "\n", encoding="utf-8")
+    (args.root / "three_experiment_summary.txt").write_text(
+        summary + "\n", encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":

@@ -12,8 +12,9 @@ OUTPUT_DIR="${OUTPUT_DIR:-runs/oakland_to_fremont_salt}"
 SEED="${SEED:-2026}"
 
 python run.py \
-  --pipeline oakland_transfer \
+  --pipeline cross_city \
   --mode student_downstream \
+  --experiment-label "Oakland Teacher -> Oakland Student -> Fremont" \
   --teacher-checkpoint "$TEACHER_CHECKPOINT" \
   --student-data "$SOURCE_ROOT" \
   --target-data "$TARGET_ROOT" \

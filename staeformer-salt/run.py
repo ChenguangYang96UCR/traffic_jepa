@@ -29,12 +29,22 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SALT distillation for STAEformer")
     parser.add_argument(
         "--pipeline",
-        choices=("fremont_direct", "oakland_transfer"),
-        default="fremont_direct",
+        choices=("in_domain", "cross_city", "fremont_direct", "oakland_transfer"),
+        default="in_domain",
+        help=(
+            "in_domain: student and downstream use the same city; cross_city: "
+            "distill the student on one city and transfer it to another. The two "
+            "legacy names remain accepted for reproducibility."
+        ),
     )
     parser.add_argument("--teacher-data", default="", help="Teacher city dataset")
     parser.add_argument("--student-data", default="", help="Student city dataset")
-    parser.add_argument("--target-data", default="", help="Downstream Fremont dataset")
+    parser.add_argument("--target-data", default="", help="Downstream city dataset")
+    parser.add_argument(
+        "--experiment-label",
+        default="",
+        help="Human-readable label used in the evaluation report",
+    )
     parser.add_argument(
         "--mode",
         choices=("all", "teacher", "student", "student_downstream", "downstream"),
@@ -301,7 +311,8 @@ def run_downstream(
     target_loaders = make_loaders(args, target_datasets)
     student_state = torch.load(student_checkpoint, map_location="cpu")["student_encoder"]
     results = {}
-    args.freeze_city_embedding = args.pipeline == "fremont_direct"
+    in_domain = args.pipeline in ("in_domain", "fremont_direct")
+    args.freeze_city_embedding = in_domain
 
     seed_everything(args.seed)
     scratch = make_encoder(args, target_nodes, target_channels)
@@ -312,9 +323,9 @@ def run_downstream(
     transfer_report = None
     for strategy in ("frozen", "full"):
         encoder = make_encoder(args, target_nodes, target_channels)
-        if args.pipeline == "fremont_direct":
+        if in_domain:
             if student_nodes != target_nodes:
-                raise ValueError("fremont_direct requires identical student/target node counts")
+                raise ValueError("in_domain requires identical student/target node counts")
             encoder.load_state_dict(student_state)
             transfer_report = {
                 "loaded": list(student_state),
@@ -330,6 +341,7 @@ def run_downstream(
 
     report = {
         "pipeline": args.pipeline,
+        "experiment_label": args.experiment_label,
         "student_nodes": student_nodes,
         "target_nodes": target_nodes,
         **transfer_report,
@@ -347,7 +359,8 @@ def run_downstream(
             f"{labels[key]:<34} {item['mae']:>12.7f} {item['mse']:>12.7f} {item['rmse']:>12.7f}"
         )
     summary = "\n".join(lines)
-    print(f"\nSALT {args.pipeline} evaluation\n{summary}")
+    title = args.experiment_label or f"SALT {args.pipeline} evaluation"
+    print(f"\n{title}\n{summary}")
     (output / "summary.txt").write_text(summary + "\n", encoding="utf-8")
     write_json(output / "all_results.json", results)
 
@@ -454,10 +467,11 @@ def main() -> None:
             student_datasets, "SALT student city"
         )
     target_root = require_path(args.target_data, "--target-data")
-    if args.pipeline == "fremont_direct" and student_root.resolve() != target_root.resolve():
-        raise ValueError("fremont_direct requires the same --student-data and --target-data")
-    if args.pipeline == "oakland_transfer" and student_root.resolve() == target_root.resolve():
-        raise ValueError("oakland_transfer requires different student and target datasets")
+    in_domain = args.pipeline in ("in_domain", "fremont_direct")
+    if in_domain and student_root.resolve() != target_root.resolve():
+        raise ValueError("in_domain requires the same --student-data and --target-data")
+    if not in_domain and student_root.resolve() == target_root.resolve():
+        raise ValueError("cross_city requires different student and target datasets")
     target_datasets = datasets_for(args, str(target_root))
     target_nodes, target_channels = inspect_dataset(target_datasets, "downstream city")
     if student_channels != target_channels:

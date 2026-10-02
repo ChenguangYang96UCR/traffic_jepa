@@ -93,3 +93,43 @@ The combined report is written to:
 ```text
 runs/three_city_experiments/three_experiment_summary.txt
 ```
+
+## Three Berkeley experiments
+
+Berkeley is an independently extracted dataset. The Berkeley experiment suite
+mirrors the three Fremont experiments:
+
+```text
+1. Berkeley Teacher -> Berkeley Student -> Berkeley forecasting
+2. Oakland Teacher  -> Berkeley Student -> Berkeley forecasting
+3. Oakland Teacher  -> Oakland Student  -> Berkeley transfer/fine-tuning
+```
+
+Experiments 2 and 3 reuse the same already-trained, frozen Oakland Teacher.
+They do not retrain it. Each experiment reports scratch, frozen, and full
+fine-tuning performance on the Berkeley test split.
+
+Expected independent Berkeley files:
+
+```text
+Berkeley/
+  incident_train.npy
+  incident_val.npy
+  incident_test.npy
+  sensors.csv
+```
+
+Run it with:
+
+```bash
+nohup env \
+BERKELEY_ROOT=/absolute/path/to/Berkeley \
+OAKLAND_ROOT=/absolute/path/to/Oakland \
+OAKLAND_TEACHER_CHECKPOINT=/absolute/path/to/best_teacher.pt \
+RUN_ROOT=runs/three_berkeley_experiments \
+bash scripts/run_three_berkeley_experiments.sh \
+> run_three_berkeley_experiments.log 2>&1 &
+```
+
+The combined table is written to
+`runs/three_berkeley_experiments/three_experiment_summary.txt` by default.

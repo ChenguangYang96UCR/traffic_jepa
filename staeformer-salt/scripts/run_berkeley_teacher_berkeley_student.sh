@@ -5,17 +5,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
-FREMONT_ROOT="${FREMONT_ROOT:-../dataset/Fremont}"
-OUTPUT_DIR="${OUTPUT_DIR:-runs/exp1_fremont_teacher_fremont_student}"
+BERKELEY_ROOT="${BERKELEY_ROOT:-../TopoJEPA/dataset/Berkeley}"
+OUTPUT_DIR="${OUTPUT_DIR:-runs/exp1_berkeley_berkeley}"
 SEED="${SEED:-2026}"
+
+for split in train val test; do
+  file="$BERKELEY_ROOT/incident_${split}.npy"
+  if [[ ! -f "$file" ]]; then
+    echo "ERROR: Berkeley split not found: $file" >&2
+    exit 2
+  fi
+done
 
 python run.py \
   --pipeline in_domain \
   --mode all \
-  --experiment-label "Fremont Teacher -> Fremont Student" \
-  --teacher-data "$FREMONT_ROOT" \
-  --student-data "$FREMONT_ROOT" \
-  --target-data "$FREMONT_ROOT" \
+  --experiment-label "Berkeley Teacher -> Berkeley Student" \
+  --teacher-data "$BERKELEY_ROOT" \
+  --student-data "$BERKELEY_ROOT" \
+  --target-data "$BERKELEY_ROOT" \
   --teacher-sensor-dim 0 \
   --input-steps 12 \
   --pred-steps 12 \

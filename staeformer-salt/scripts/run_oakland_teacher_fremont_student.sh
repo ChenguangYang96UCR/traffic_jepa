@@ -11,8 +11,9 @@ OUTPUT_DIR="${OUTPUT_DIR:-runs/exp2_oakland_teacher_fremont_student}"
 SEED="${SEED:-2026}"
 
 python run.py \
-  --pipeline fremont_direct \
+  --pipeline in_domain \
   --mode student_downstream \
+  --experiment-label "Oakland Teacher -> Fremont Student" \
   --teacher-checkpoint "$TEACHER_CHECKPOINT" \
   --student-data "$FREMONT_ROOT" \
   --target-data "$FREMONT_ROOT" \
