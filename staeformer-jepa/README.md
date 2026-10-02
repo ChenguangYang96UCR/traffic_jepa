@@ -1,42 +1,53 @@
-# STAEformer-JEPA: future-flow forecasting
+# STAEformer-JEPA traffic forecasting
 
-Standalone PyTorch package for testing whether JEPA representation pretraining
-improves the standard STAEformer downstream task.
+Standalone PyTorch package for causal future-block JEPA pretraining followed by
+STAEformer future-flow forecasting.
 
-## What remains unchanged
+## Task and architecture
 
-The downstream task is direct future traffic-flow forecasting:
+The downstream task remains:
 
 ```text
-past 12 steps x 93 sensors -> future 3 steps x 93 sensors
+past 12 steps x N sensors -> future 12 steps x N sensors
 ```
 
-There is no random sensor mask, no missing-value reconstruction, and no JEPA
-loss during downstream fine-tuning. The forecasting backbone retains the core
-published STAEformer design: traffic/time/adaptive embeddings, temporal vanilla
-Transformer layers, spatial vanilla Transformer layers, and a mixed projection
-from all historical representations to all future values.
+During downstream forecasting, the 12 unknown future positions are appended as
+mask tokens; no future traffic value is supplied to the model. Because the
+released windows do not contain trustworthy absolute timestamps, the model
+does not use time-of-day or day-of-week embeddings. It uses traffic values and:
+
+```text
+relative_step_embedding[T,D] + city_sensor_embedding[N,D]
+```
+
+This factorizes the original joint adaptive table. The relative step embedding
+and all Transformer weights transfer between cities; each city learns its own
+sensor embedding. Oakland and Fremont may therefore have different node counts
+without inventing a node-to-node mapping.
+
+The encoder consists of traffic projection, relative-step embedding,
+city-specific sensor embedding, temporal self-attention, spatial
+self-attention, feed-forward layers, and normalization.
 
 ## JEPA pretraining
 
-The online STAEformer encoder sees only the 12 historical steps. Future queries
-predict the latent representations of all `3 x 93` future positions. An EMA
-target STAEformer encoder independently encodes the true 3-step future block and
-supplies stop-gradient latent targets. Both branches share the standard learned
-12-position adaptive-embedding table; the shorter target block uses its first
-three relative positions. Pretraining uses latent L1 only: it never regresses
-traffic flow.
+Each source sample is a 24-step sequence made from 12 historical and 12 future
+traffic steps. In the default `future` mode, the online branch always receives
+the first 12 real steps followed by 12 learned mask tokens. A latent predictor
+estimates representations at all future positions. The EMA target branch sees
+the complete unmasked 24-step sequence and supplies stop-gradient targets.
 
-After pretraining, the target encoder and JEPA predictor are discarded. The
-online encoder initializes a standard STAEformer forecast model.
+Training, validation, fine-tuning, and testing therefore use the same causal
+information boundary. `masked_steps` must equal `pred_steps`, preventing future
+ground-truth leakage. The older arbitrary random mask remains available only
+through `--pretrain-mask-mode random` as an ablation. Pretraining uses latent L1
+and does not directly regress traffic flow.
 
-## Experiments produced by one command
+For cross-city transfer, the default transferred representation is the EMA
+target encoder. The online encoder is available as an ablation. The source
+sensor embedding and JEPA predictor are never transferred.
 
-1. STAEformer trained from scratch.
-2. JEPA-pretrained encoder frozen; train the original forecast head only.
-3. JEPA-pretrained encoder fully fine-tuned with forecast loss only.
-
-## Server installation
+## Installation and test
 
 ```bash
 cd staeformer-jepa
@@ -44,32 +55,25 @@ pip install -e . --no-deps
 python -m unittest discover -s tests -v
 ```
 
-The package only requires a compatible PyTorch and NumPy. `--no-deps` avoids
-replacing the server's existing CUDA-enabled PyTorch build.
+The package needs a compatible PyTorch and NumPy. `--no-deps` avoids replacing
+the server's CUDA-enabled PyTorch.
 
-## Fremont data
+## Data
 
-Expected directory:
-
-```text
-Fremont/
-  incident_train.npy
-  incident_val.npy
-  incident_test.npy
-```
-
-Each object-array sample must contain:
+Each city directory must contain:
 
 ```text
-x_data: [12, 93, >=3]
-y_data: [12, 93, >=3]
+incident_train.npy
+incident_val.npy
+incident_test.npy
 ```
 
-By default channel 0 is traffic, channel 1 is normalized time-of-day, and
-channel 2 is day-of-week in `[0,6]`. Only `y_data[:3, :, 0]` is the downstream
-target. Incident metadata is not loaded.
+Each object-array sample contains `x_data` and `y_data` with shapes
+`[steps, sensors, features]`. Only `--traffic-feature` (default channel 0) is
+read. Incident metadata and all other feature channels are ignored. The first
+three `y_data` traffic steps are the downstream labels.
 
-## Run the complete comparison
+## Same-city comparison
 
 ```bash
 DATA_ROOT=/absolute/path/to/TopoJEPA/dataset/Fremont \
@@ -77,45 +81,93 @@ OUTPUT_DIR=runs/fremont_12_to_3 \
 bash scripts/run_fremont_12_to_3.sh
 ```
 
-For a background run:
+This compares STAEformer scratch, JEPA frozen transfer, and JEPA full
+fine-tuning on Fremont.
+
+## Oakland JEPA -> Fremont STAEformer
+
+Run the complete cross-city experiment:
+
+```bash
+SOURCE_ROOT=/absolute/path/to/TopoJEPA/dataset/Oakland \
+TARGET_ROOT=/absolute/path/to/TopoJEPA/dataset/Fremont \
+OUTPUT_DIR=runs/oakland_to_fremont \
+bash scripts/run_oakland_to_fremont.sh
+```
+
+For the recommended 12-to-12 causal experiment, run:
+
+```bash
+SOURCE_ROOT=/absolute/path/to/TopoJEPA/dataset/Oakland \
+TARGET_ROOT=/absolute/path/to/TopoJEPA/dataset/Fremont \
+OUTPUT_DIR=runs/oakland_to_fremont_12step \
+bash scripts/run_oakland_to_fremont_12step.sh
+```
+
+Background execution:
 
 ```bash
 nohup env \
-DATA_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Fremont \
-OUTPUT_DIR=runs/fremont_12_to_3 \
-bash scripts/run_fremont_12_to_3.sh \
-> run_fremont_12_to_3.log 2>&1 &
+SOURCE_ROOT=/absolute/path/to/TopoJEPA/dataset/Oakland \
+TARGET_ROOT=/absolute/path/to/TopoJEPA/dataset/Fremont \
+OUTPUT_DIR=runs/oakland_to_fremont \
+bash scripts/run_oakland_to_fremont.sh \
+> run_oakland_to_fremont.log 2>&1 &
 ```
+
+The pipeline performs:
+
+1. Causal future-12-step JEPA pretraining and validation on Oakland.
+2. A Fremont STAEformer-from-scratch baseline.
+3. EMA-target transfer with shared weights frozen. The fresh Fremont sensor
+   embedding and forecast head remain trainable.
+4. EMA-target transfer with full fine-tuning. Transferred weights use
+   `encoder_lr_scale * finetune_lr`; new target parameters use `finetune_lr`.
+5. Final evaluation on Fremont test only, using 12 real historical steps plus
+   12 learned mask tokens to predict 12 future flow steps.
+
+To reuse an existing Oakland checkpoint:
+
+```bash
+python run_transfer.py \
+  --mode finetune \
+  --source-data /path/to/Oakland \
+  --target-data /path/to/Fremont \
+  --pretrained-checkpoint /path/to/best_jepa.pt \
+  --transfer-branch target \
+  --output runs/oakland_to_fremont
+```
+
+Use `--transfer-branch online` to compare the online and EMA target encoders.
 
 ## Outputs
 
 ```text
-runs/fremont_12_to_3/
-  pretrain/best_jepa.pt
+runs/oakland_to_fremont/
+  source/pretrain/best_jepa.pt
   scratch/best_forecast.pt
-  scratch/test_metrics.json
   frozen/best_forecast.pt
-  frozen/test_metrics.json
   full/best_forecast.pt
-  full/test_metrics.json
+  transfer_report.json
   all_results.json
   summary.txt
 ```
 
-Metrics include overall MAE/MSE/RMSE and separate values for future steps 1, 2,
-and 3. With 5-minute sampling these are 5-, 10-, and 15-minute forecasts.
-
-## Important interpretation
-
-The released incident windows are already stored/normalized, so reported values
-remain in stored units unless the original inverse-scaling statistics are known.
-The same incident windows may overlap. This experiment therefore evaluates the
-released split, not a newly reconstructed continuous chronological benchmark.
+Metrics include overall MAE/MSE/RMSE and values for each future horizon. The
+stored traffic values remain in their released units unless inverse-scaling
+statistics are separately available.
 
 ## Attribution
 
-The STAEformer architecture follows Liu et al., *Spatio-Temporal Adaptive
-Embedding Makes Vanilla Transformer SOTA for Traffic Forecasting*, CIKM 2023,
-and its official repository: https://github.com/XDZhelheim/STAEformer. This
-package is a clean implementation for the present experiment and does not vendor
-the official source tree or datasets.
+The backbone follows Liu et al., *Spatio-Temporal Adaptive Embedding Makes
+Vanilla Transformer SOTA for Traffic Forecasting*, CIKM 2023, with the stated
+embedding factorization for cross-city transfer.
+
+```bash
+nohup env \
+SOURCE_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Oakland \
+TARGET_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Fremont \
+OUTPUT_DIR=runs/oakland_to_fremont_causal_12step \
+bash scripts/run_oakland_to_fremont_12step.sh \
+> run_oakland_to_fremont_causal_12step.log 2>&1 &
+```

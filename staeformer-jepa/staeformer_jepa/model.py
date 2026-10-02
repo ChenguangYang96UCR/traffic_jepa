@@ -63,6 +63,8 @@ class STAEformerEncoder(nn.Module):
             raise ValueError("Total model dimension must be divisible by num_heads")
 
         self.input_projection = nn.Linear(input_dim, input_embedding_dim)
+        self.mask_token = nn.Parameter(torch.zeros(input_embedding_dim))
+        nn.init.normal_(self.mask_token, std=0.02)
         if step_embedding_dim:
             self.relative_step_embedding = nn.Parameter(
                 torch.empty(max_steps, step_embedding_dim)
@@ -80,7 +82,12 @@ class STAEformerEncoder(nn.Module):
             [AxisSelfAttention(self.model_dim, num_heads, feed_forward_dim, dropout) for _ in range(num_layers)]
         )
 
-    def forward(self, values: torch.Tensor, start_position: int = 0) -> torch.Tensor:
+    def forward(
+        self,
+        values: torch.Tensor,
+        start_position: int = 0,
+        step_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         batch, steps, nodes, channels = values.shape
         if nodes != self.num_nodes or start_position + steps > self.max_steps:
             raise ValueError(
@@ -89,7 +96,16 @@ class STAEformerEncoder(nn.Module):
             )
         if channels != self.input_dim:
             raise ValueError(f"Encoder expected {self.input_dim} channels, got {channels}")
-        features = [self.input_projection(values)]
+        projected = self.input_projection(values)
+        if step_mask is not None:
+            if step_mask.shape != (batch, steps):
+                raise ValueError(
+                    f"step_mask must have shape {(batch, steps)}, got {tuple(step_mask.shape)}"
+                )
+            mask = step_mask.to(device=values.device, dtype=torch.bool)
+            token = self.mask_token.view(1, 1, 1, -1)
+            projected = torch.where(mask[:, :, None, None], token, projected)
+        features = [projected]
         if self.step_embedding_dim:
             step = self.relative_step_embedding[start_position : start_position + steps]
             features.append(step[None, :, None, :].expand(batch, -1, nodes, -1))
@@ -181,6 +197,107 @@ class FutureJEPA(nn.Module):
             target.data.mul_(momentum).add_(online.data, alpha=1.0 - momentum)
 
 
+def gather_steps(sequence: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
+    """Gather K time steps independently for every batch item."""
+    if positions.ndim != 2 or positions.shape[0] != sequence.shape[0]:
+        raise ValueError("positions must have shape [batch, masked_steps]")
+    index = positions[:, :, None, None].expand(
+        -1, -1, sequence.shape[2], sequence.shape[3]
+    )
+    return torch.gather(sequence, 1, index)
+
+
+class MaskedStepPredictor(nn.Module):
+    """Predict target representations at masked time steps."""
+
+    def __init__(self, dim: int, dropout: float):
+        super().__init__()
+        self.network = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, 2 * dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(2 * dim, dim),
+            nn.LayerNorm(dim),
+        )
+
+    def forward(self, masked_hidden: torch.Tensor) -> torch.Tensor:
+        return self.network(masked_hidden)
+
+
+class MaskedStepJEPA(nn.Module):
+    """Masked-step JEPA with an EMA teacher; supports causal future masking."""
+
+    def __init__(
+        self,
+        encoder: STAEformerEncoder,
+        input_steps: int,
+        pred_steps: int,
+        masked_steps: int,
+        dropout: float,
+    ):
+        super().__init__()
+        total_steps = input_steps + pred_steps
+        if encoder.max_steps < total_steps:
+            raise ValueError("Encoder max_steps must cover history plus future")
+        if masked_steps != pred_steps:
+            raise ValueError(
+                "masked_steps must equal pred_steps so validation cannot observe "
+                "any ground-truth future step"
+            )
+        self.online_encoder = encoder
+        self.target_encoder = copy.deepcopy(encoder)
+        for parameter in self.target_encoder.parameters():
+            parameter.requires_grad = False
+        self.predictor = MaskedStepPredictor(encoder.model_dim, dropout)
+        self.input_steps = input_steps
+        self.pred_steps = pred_steps
+        self.masked_steps = masked_steps
+        self.total_steps = total_steps
+
+    def random_mask_positions(self, batch: int, device: torch.device) -> torch.Tensor:
+        scores = torch.rand(batch, self.total_steps, device=device)
+        return scores.topk(self.masked_steps, dim=1).indices.sort(dim=1).values
+
+    def future_mask_positions(self, batch: int, device: torch.device) -> torch.Tensor:
+        positions = torch.arange(
+            self.total_steps - self.masked_steps, self.total_steps, device=device
+        )
+        return positions[None].expand(batch, -1)
+
+    def forward(
+        self,
+        history: torch.Tensor,
+        future: torch.Tensor,
+        mask_positions: torch.Tensor | None = None,
+    ):
+        sequence = torch.cat((history, future), dim=1)
+        batch = sequence.shape[0]
+        if sequence.shape[1] != self.total_steps:
+            raise ValueError(
+                f"Expected {self.total_steps} combined steps, got {sequence.shape[1]}"
+            )
+        if mask_positions is None:
+            mask_positions = self.random_mask_positions(batch, sequence.device)
+        step_mask = torch.zeros(
+            batch, self.total_steps, dtype=torch.bool, device=sequence.device
+        )
+        step_mask.scatter_(1, mask_positions, True)
+        online = self.online_encoder(sequence, step_mask=step_mask)
+        predicted = self.predictor(gather_steps(online, mask_positions))
+        with torch.no_grad():
+            target = self.target_encoder(sequence)
+            target = gather_steps(target, mask_positions)
+        return predicted, target.detach(), mask_positions
+
+    @torch.no_grad()
+    def update_target(self, momentum: float) -> None:
+        for target, online in zip(
+            self.target_encoder.parameters(), self.online_encoder.parameters()
+        ):
+            target.data.mul_(momentum).add_(online.data, alpha=1.0 - momentum)
+
+
 class STAEformerForecast(nn.Module):
     """Original STAEformer mixed projection for direct multi-step forecasting."""
 
@@ -202,3 +319,38 @@ class STAEformerForecast(nn.Module):
             batch, nodes, self.pred_steps, self.output_dim
         )
         return output.transpose(1, 2)
+
+
+class MaskedFutureForecast(nn.Module):
+    """Forecast future flow by appending and encoding masked future tokens."""
+
+    def __init__(
+        self,
+        encoder: STAEformerEncoder,
+        input_steps: int,
+        pred_steps: int,
+        output_dim: int = 1,
+    ):
+        super().__init__()
+        if encoder.max_steps < input_steps + pred_steps:
+            raise ValueError("Encoder max_steps must cover history plus future masks")
+        self.encoder = encoder
+        self.input_steps = input_steps
+        self.pred_steps = pred_steps
+        self.output_dim = output_dim
+        self.output_projection = nn.Linear(encoder.model_dim, output_dim)
+
+    def forward(self, history: torch.Tensor) -> torch.Tensor:
+        batch, steps, nodes, channels = history.shape
+        if steps != self.input_steps:
+            raise ValueError(f"Expected {self.input_steps} history steps, got {steps}")
+        placeholders = history.new_zeros(batch, self.pred_steps, nodes, channels)
+        sequence = torch.cat((history, placeholders), dim=1)
+        mask = torch.zeros(
+            batch, self.input_steps + self.pred_steps,
+            dtype=torch.bool,
+            device=history.device,
+        )
+        mask[:, self.input_steps :] = True
+        hidden = self.encoder(sequence, step_mask=mask)
+        return self.output_projection(hidden[:, self.input_steps :])

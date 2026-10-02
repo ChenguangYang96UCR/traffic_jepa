@@ -42,7 +42,6 @@ class FremontForecastDataset(Dataset):
         input_steps: int = 12,
         pred_steps: int = 3,
         traffic_feature: int = 0,
-        use_time_features: bool = True,
         pattern: str = "incident_{split}.npy",
     ):
         path = Path(root) / pattern.format(split=split)
@@ -67,38 +66,18 @@ class FremontForecastDataset(Dataset):
                 raise ValueError(f"traffic feature {traffic_feature} invalid for {x.shape}/{y.shape}")
             x = x[-input_steps:]
             y = y[:pred_steps]
-            flow_x = x[..., traffic_feature : traffic_feature + 1]
-            flow_y = y[..., traffic_feature : traffic_feature + 1]
-            if use_time_features:
-                if min(x.shape[-1], y.shape[-1]) < 3:
-                    raise ValueError("Time features require channels 1=time-of-day and 2=day-of-week")
-                self._validate_time_features(x, path, index)
-                self._validate_time_features(y, path, index)
-                model_x = np.concatenate((flow_x, x[..., 1:3]), axis=-1)
-                model_y = np.concatenate((flow_y, y[..., 1:3]), axis=-1)
-            else:
-                model_x, model_y = flow_x, flow_y
+            model_x = x[..., traffic_feature : traffic_feature + 1]
+            model_y = y[..., traffic_feature : traffic_feature + 1]
             if not np.isfinite(model_x).all() or not np.isfinite(model_y).all():
                 raise ValueError(f"{path}: nonfinite value in sample {index}")
             histories.append(model_x)
             futures.append(model_y)
-            labels.append(flow_y)
+            labels.append(model_y)
         if not histories:
             raise ValueError(f"No samples in {path}")
         self.history = torch.from_numpy(np.stack(histories))
         self.future = torch.from_numpy(np.stack(futures))
         self.labels = torch.from_numpy(np.stack(labels))
-
-    @staticmethod
-    def _validate_time_features(data: np.ndarray, path: Path, index: int) -> None:
-        time = data[:, 0, 1:3]
-        if not np.allclose(data[..., 1:3], time[:, None, :], equal_nan=False):
-            raise ValueError(f"{path}: time channels vary across sensors in sample {index}")
-        tod, dow = time[:, 0], time[:, 1]
-        if np.any(tod < 0) or np.any(tod >= 1.00001):
-            raise ValueError(f"{path}: time-of-day must be normalized to [0,1] in sample {index}")
-        if np.any(dow < 0) or np.any(dow > 6.00001):
-            raise ValueError(f"{path}: day-of-week must be in [0,6] in sample {index}")
 
     def __len__(self) -> int:
         return self.history.shape[0]
@@ -115,9 +94,7 @@ def make_datasets(args) -> dict[str, FremontForecastDataset]:
             input_steps=args.input_steps,
             pred_steps=args.pred_steps,
             traffic_feature=args.traffic_feature,
-            use_time_features=not args.no_time_features,
             pattern=args.file_pattern,
         )
         for split in ("train", "val", "test")
     }
-

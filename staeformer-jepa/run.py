@@ -10,7 +10,11 @@ import torch
 from torch.utils.data import DataLoader
 
 from staeformer_jepa.data import make_datasets
-from staeformer_jepa.model import FutureJEPA, STAEformerEncoder, STAEformerForecast
+from staeformer_jepa.model import (
+    MaskedFutureForecast,
+    MaskedStepJEPA,
+    STAEformerEncoder,
+)
 from staeformer_jepa.training import MetricAccumulator, seed_everything, write_json
 
 
@@ -20,14 +24,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data", required=True)
     parser.add_argument("--file-pattern", default="incident_{split}.npy")
     parser.add_argument("--traffic-feature", type=int, default=0)
-    parser.add_argument("--no-time-features", action="store_true")
     parser.add_argument("--input-steps", type=int, default=12)
     parser.add_argument("--pred-steps", type=int, default=3)
-    parser.add_argument("--steps-per-day", type=int, default=288)
+    parser.add_argument(
+        "--masked-steps", type=int, default=3,
+        help="Number of complete masked steps; must equal pred-steps",
+    )
+    parser.add_argument(
+        "--pretrain-mask-mode",
+        choices=("future", "random"),
+        default="future",
+        help="future masks the complete prediction horizon; random is an ablation",
+    )
     parser.add_argument("--input-embedding-dim", type=int, default=24)
-    parser.add_argument("--tod-embedding-dim", type=int, default=24)
-    parser.add_argument("--dow-embedding-dim", type=int, default=24)
-    parser.add_argument("--adaptive-embedding-dim", type=int, default=80)
+    parser.add_argument("--step-embedding-dim", type=int, default=24)
+    parser.add_argument("--sensor-embedding-dim", type=int, default=80)
     parser.add_argument("--feed-forward-dim", type=int, default=256)
     parser.add_argument("--heads", type=int, default=4)
     parser.add_argument("--layers", type=int, default=3)
@@ -50,16 +61,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def make_encoder(args, nodes: int, channels: int) -> STAEformerEncoder:
-    time_features = not args.no_time_features
     return STAEformerEncoder(
         num_nodes=nodes,
-        max_steps=args.input_steps,
+        max_steps=args.input_steps + args.pred_steps,
         input_dim=channels,
-        steps_per_day=args.steps_per_day,
         input_embedding_dim=args.input_embedding_dim,
-        tod_embedding_dim=args.tod_embedding_dim if time_features else 0,
-        dow_embedding_dim=args.dow_embedding_dim if time_features else 0,
-        adaptive_embedding_dim=args.adaptive_embedding_dim,
+        step_embedding_dim=args.step_embedding_dim,
+        sensor_embedding_dim=args.sensor_embedding_dim,
         feed_forward_dim=args.feed_forward_dim,
         num_heads=args.heads,
         num_layers=args.layers,
@@ -85,7 +93,9 @@ def evaluate_jepa(model, loader, device) -> float:
     model.eval()
     total, count = 0.0, 0
     for history, future, _ in loader:
-        prediction, target = model(history.to(device), future.to(device))
+        history, future = history.to(device), future.to(device)
+        positions = model.future_mask_positions(history.shape[0], device)
+        prediction, target, _ = model(history, future, positions)
         total += float(torch.nn.functional.l1_loss(prediction, target, reduction="sum"))
         count += target.numel()
     return total / count
@@ -93,12 +103,11 @@ def evaluate_jepa(model, loader, device) -> float:
 
 def pretrain_jepa(args, loaders, encoder, device, output: Path) -> Path:
     seed_everything(args.seed)
-    model = FutureJEPA(
+    model = MaskedStepJEPA(
         encoder,
         args.input_steps,
         args.pred_steps,
-        args.heads,
-        args.predictor_layers,
+        args.masked_steps,
         args.dropout,
     ).to(device)
     optimizer = torch.optim.AdamW(
@@ -115,7 +124,10 @@ def pretrain_jepa(args, loaders, encoder, device, output: Path) -> Path:
         total, count = 0.0, 0
         for history, future, _ in loaders["train"]:
             history, future = history.to(device), future.to(device)
-            prediction, target = model(history, future)
+            positions = None
+            if args.pretrain_mask_mode == "future":
+                positions = model.future_mask_positions(history.shape[0], device)
+            prediction, target, _ = model(history, future, positions)
             loss = torch.nn.functional.l1_loss(prediction, target)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
@@ -129,7 +141,8 @@ def pretrain_jepa(args, loaders, encoder, device, output: Path) -> Path:
         validation = evaluate_jepa(model, loaders["val"], device)
         print(
             f"pretrain {epoch:03d}/{args.pretrain_epochs}: "
-            f"train_latent_l1={total / count:.6f} val_latent_l1={validation:.6f}"
+            f"train_{args.pretrain_mask_mode}_mask_l1={total / count:.6f} "
+            f"val_future_mask_l1={validation:.6f}"
         )
         if validation < best:
             best, stale = validation, 0
@@ -139,7 +152,8 @@ def pretrain_jepa(args, loaders, encoder, device, output: Path) -> Path:
                     "target_encoder": model.target_encoder.state_dict(),
                     "predictor": model.predictor.state_dict(),
                     "epoch": epoch,
-                    "val_latent_l1": validation,
+                    "val_future_mask_l1": validation,
+                    "pretrain_mask_mode": args.pretrain_mask_mode,
                     "args": vars(args),
                 },
                 checkpoint,
@@ -171,7 +185,7 @@ def forecast_loss(prediction, target, name: str):
 def train_forecaster(args, loaders, encoder, strategy: str, device, output: Path):
     # Give all downstream variants the same batch ordering and dropout stream.
     seed_everything(args.seed + 100_000)
-    model = STAEformerForecast(encoder, args.input_steps, args.pred_steps).to(device)
+    model = MaskedFutureForecast(encoder, args.input_steps, args.pred_steps).to(device)
     if strategy == "frozen":
         for parameter in model.encoder.parameters():
             parameter.requires_grad = False
@@ -266,9 +280,9 @@ def main() -> None:
 
     lines = [f"{'Method':<32} {'MAE':>12} {'MSE':>12} {'RMSE':>12}", "-" * 71]
     labels = {
-        "staeformer_scratch": "STAEformer from scratch",
-        "jepa_frozen": "JEPA + frozen STAEformer",
-        "jepa_full": "JEPA + full fine-tune",
+        "staeformer_scratch": "Masked-future STAEformer scratch",
+        "jepa_frozen": f"{args.pretrain_mask_mode}-mask JEPA + frozen",
+        "jepa_full": f"{args.pretrain_mask_mode}-mask JEPA + full fine-tune",
     }
     for key in ("staeformer_scratch", "jepa_frozen", "jepa_full"):
         item = results[key]
