@@ -60,10 +60,19 @@ class STAEformerEncoder(nn.Module):
         ])
 
     def forward(self, values: torch.Tensor, start_position: int = 0,
-                step_mask: torch.Tensor | None = None) -> torch.Tensor:
+                step_mask: torch.Tensor | None = None,
+                node_indices: torch.Tensor | None = None) -> torch.Tensor:
         batch, steps, nodes, channels = values.shape
-        if nodes != self.num_nodes or start_position + steps > self.max_steps:
-            raise ValueError(f"Expected <= {self.max_steps} steps and {self.num_nodes} nodes, got {values.shape}")
+        expected_nodes = (
+            nodes
+            if self.sensor_embedding_dim == 0 and node_indices is None
+            else self.num_nodes if node_indices is None else int(node_indices.numel())
+        )
+        if nodes != expected_nodes or start_position + steps > self.max_steps:
+            raise ValueError(
+                f"Expected <= {self.max_steps} steps and {expected_nodes} selected nodes, "
+                f"got {values.shape}"
+            )
         if channels != self.input_dim:
             raise ValueError(f"Expected {self.input_dim} channels, got {channels}")
         projected = self.input_projection(values)
@@ -83,7 +92,15 @@ class STAEformerEncoder(nn.Module):
             step = self.relative_step_embedding[start_position:start_position + steps]
             features.append(step[None, :, None, :].expand(batch, -1, nodes, -1))
         if self.sensor_embedding_dim:
-            features.append(self.sensor_embedding[None, None, :, :].expand(batch, steps, -1, -1))
+            sensor_embedding = self.sensor_embedding
+            if node_indices is not None:
+                node_indices = node_indices.to(device=values.device, dtype=torch.long)
+                if node_indices.min() < 0 or node_indices.max() >= self.num_nodes:
+                    raise ValueError("node_indices are outside the teacher sensor table")
+                sensor_embedding = sensor_embedding.index_select(0, node_indices)
+            features.append(sensor_embedding[None, None, :, :].expand(batch, steps, -1, -1))
+        elif node_indices is not None:
+            raise ValueError("node_indices are unnecessary for a node-agnostic encoder")
         hidden = torch.cat(features, dim=-1)
         for layer in self.temporal_layers:
             temporal = hidden.permute(0, 2, 1, 3).reshape(batch * nodes, steps, self.model_dim)

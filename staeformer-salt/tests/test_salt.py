@@ -53,6 +53,41 @@ class SALTTests(unittest.TestCase):
         self.assertTrue(any(p.grad is not None for p in model.student.parameters()))
         self.assertTrue(all(p.grad is None for p in model.teacher.parameters()))
 
+    def test_shared_teacher_supports_city_sensor_subset(self):
+        model = SALTDistiller(
+            encoder(7),
+            encoder(3, 2),
+            12,
+            12,
+            0.0,
+            teacher_node_indices=torch.tensor([1, 3, 6]),
+        )
+        prediction, target = model(
+            torch.randn(2, 12, 3, 1), torch.randn(2, 12, 3, 1)
+        )
+        self.assertEqual(tuple(prediction.shape[:3]), (2, 12, 3))
+        self.assertEqual(tuple(target.shape), tuple(prediction.shape))
+
+    def test_node_agnostic_oakland_teacher_accepts_fremont_student(self):
+        teacher = STAEformerEncoder(
+            num_nodes=5,
+            max_steps=24,
+            input_dim=1,
+            input_embedding_dim=8,
+            step_embedding_dim=8,
+            sensor_embedding_dim=0,
+            feed_forward_dim=32,
+            num_heads=4,
+            num_layers=1,
+            dropout=0.0,
+        )
+        model = SALTDistiller(teacher, encoder(3, 2), 12, 12, 0.0)
+        prediction, target = model(
+            torch.randn(2, 12, 3, 1), torch.randn(2, 12, 3, 1)
+        )
+        self.assertEqual(tuple(prediction.shape[:3]), (2, 12, 3))
+        self.assertEqual(tuple(target.shape), tuple(prediction.shape))
+
     def test_cross_city_skips_sensor_table(self):
         source, target = encoder(5), encoder(3)
         initial = target.sensor_embedding.detach().clone()

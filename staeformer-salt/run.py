@@ -27,10 +27,19 @@ from staeformer_salt.training import seed_everything, write_json
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="SALT distillation for STAEformer")
-    parser.add_argument("--pipeline", choices=("same_city", "cross_city"), required=True)
-    parser.add_argument("--pretrain-data", required=True)
-    parser.add_argument("--target-data", required=True)
-    parser.add_argument("--mode", choices=("all", "teacher", "student", "downstream"), default="all")
+    parser.add_argument(
+        "--pipeline",
+        choices=("fremont_direct", "oakland_transfer"),
+        default="fremont_direct",
+    )
+    parser.add_argument("--teacher-data", default="", help="Teacher city dataset")
+    parser.add_argument("--student-data", default="", help="Student city dataset")
+    parser.add_argument("--target-data", default="", help="Downstream Fremont dataset")
+    parser.add_argument(
+        "--mode",
+        choices=("all", "teacher", "student", "student_downstream", "downstream"),
+        default="all",
+    )
     parser.add_argument("--teacher-checkpoint", default="")
     parser.add_argument("--student-checkpoint", default="")
     parser.add_argument("--file-pattern", default="incident_{split}.npy")
@@ -40,7 +49,12 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--teacher-input-dim", type=int, default=16)
     parser.add_argument("--teacher-step-dim", type=int, default=16)
-    parser.add_argument("--teacher-sensor-dim", type=int, default=32)
+    parser.add_argument(
+        "--teacher-sensor-dim",
+        type=int,
+        default=0,
+        help="Keep at 0 for node-count-independent cross-city supervision",
+    )
     parser.add_argument("--teacher-ff-dim", type=int, default=128)
     parser.add_argument("--teacher-heads", type=int, default=4)
     parser.add_argument("--teacher-layers", type=int, default=2)
@@ -123,6 +137,11 @@ def evaluate_teacher(model, loader, masker, device, seed: int) -> float:
 
 
 def train_teacher(args, loaders, nodes, channels, device, output: Path) -> Path:
+    if args.teacher_sensor_dim != 0:
+        raise ValueError(
+            "The controlled experiments require --teacher-sensor-dim 0 so every "
+            "Teacher architecture is node-count independent"
+        )
     seed_everything(args.seed)
     model = ReconstructionTeacher(make_teacher_encoder(args, nodes, channels)).to(device)
     masker = make_masker(args)
@@ -164,6 +183,8 @@ def train_teacher(args, loaders, nodes, channels, device, output: Path) -> Path:
                     "epoch": epoch,
                     "val_reconstruction": validation,
                     "args": vars(args),
+                    "teacher_nodes": nodes,
+                    "teacher_channels": channels,
                 },
                 checkpoint,
             )
@@ -188,15 +209,35 @@ def evaluate_student(model, loader, device) -> float:
 
 
 def train_student(
-    args, loaders, nodes, channels, teacher_checkpoint: Path, device, output: Path
+    args, loaders, teacher_nodes, student_nodes, channels,
+    teacher_checkpoint: Path, device, output: Path
 ) -> Path:
     seed_everything(args.seed + 1)
-    teacher = make_teacher_encoder(args, nodes, channels)
     teacher_state = torch.load(teacher_checkpoint, map_location="cpu")
+    saved_args = teacher_state.get("args", {})
+    teacher_max_steps = int(
+        teacher_state["encoder"]["relative_step_embedding"].shape[0]
+    )
+    teacher = STAEformerEncoder(
+        num_nodes=teacher_nodes,
+        max_steps=teacher_max_steps,
+        input_dim=channels,
+        input_embedding_dim=saved_args.get("teacher_input_dim", args.teacher_input_dim),
+        step_embedding_dim=saved_args.get("teacher_step_dim", args.teacher_step_dim),
+        sensor_embedding_dim=saved_args.get("teacher_sensor_dim", args.teacher_sensor_dim),
+        feed_forward_dim=saved_args.get("teacher_ff_dim", args.teacher_ff_dim),
+        num_heads=saved_args.get("teacher_heads", args.teacher_heads),
+        num_layers=saved_args.get("teacher_layers", args.teacher_layers),
+        dropout=saved_args.get("dropout", args.dropout),
+    )
     teacher.load_state_dict(teacher_state["encoder"])
-    student = make_encoder(args, nodes, channels)
+    student = make_encoder(args, student_nodes, channels)
     model = SALTDistiller(
-        teacher, student, args.input_steps, args.pred_steps, args.dropout
+        teacher,
+        student,
+        args.input_steps,
+        args.pred_steps,
+        args.dropout,
     ).to(device)
     optimizer = torch.optim.AdamW(
         list(model.student.parameters()) + list(model.predictor.parameters()),
@@ -250,7 +291,7 @@ def train_student(
 def run_downstream(
     args,
     student_checkpoint: Path,
-    pretrain_nodes: int,
+    student_nodes: int,
     target_datasets,
     target_nodes: int,
     target_channels: int,
@@ -260,7 +301,7 @@ def run_downstream(
     target_loaders = make_loaders(args, target_datasets)
     student_state = torch.load(student_checkpoint, map_location="cpu")["student_encoder"]
     results = {}
-    args.freeze_city_embedding = args.pipeline == "same_city"
+    args.freeze_city_embedding = args.pipeline == "fremont_direct"
 
     seed_everything(args.seed)
     scratch = make_encoder(args, target_nodes, target_channels)
@@ -271,9 +312,9 @@ def run_downstream(
     transfer_report = None
     for strategy in ("frozen", "full"):
         encoder = make_encoder(args, target_nodes, target_channels)
-        if args.pipeline == "same_city":
-            if pretrain_nodes != target_nodes:
-                raise ValueError("same_city requires identical pretrain/target node counts")
+        if args.pipeline == "fremont_direct":
+            if student_nodes != target_nodes:
+                raise ValueError("fremont_direct requires identical student/target node counts")
             encoder.load_state_dict(student_state)
             transfer_report = {
                 "loaded": list(student_state),
@@ -289,7 +330,7 @@ def run_downstream(
 
     report = {
         "pipeline": args.pipeline,
-        "pretrain_nodes": pretrain_nodes,
+        "student_nodes": student_nodes,
         "target_nodes": target_nodes,
         **transfer_report,
     }
@@ -311,6 +352,36 @@ def run_downstream(
     write_json(output / "all_results.json", results)
 
 
+def require_path(value: str, option: str) -> Path:
+    if not value:
+        raise ValueError(f"{option} is required for this mode")
+    path = Path(value)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    return path
+
+
+def inspect_teacher_checkpoint(path: Path) -> tuple[int, int]:
+    saved = torch.load(path, map_location="cpu")
+    encoder = saved.get("encoder", {})
+    if "input_projection.weight" not in encoder:
+        raise ValueError(f"{path} is not a valid SALT Teacher checkpoint")
+    if "sensor_embedding" in encoder:
+        raise ValueError(
+            f"{path} contains a city-specific sensor embedding. Retrain the shared "
+            "Teacher with --teacher-sensor-dim 0."
+        )
+    nodes = int(saved.get("teacher_nodes", 0))
+    if nodes <= 0:
+        raise ValueError(f"{path} does not record the Teacher node count")
+    channels = int(encoder["input_projection.weight"].shape[1])
+    print(
+        f"Frozen Teacher checkpoint: {path}; training_nodes={nodes}; "
+        f"channels={channels}; node-agnostic"
+    )
+    return nodes, channels
+
+
 def main() -> None:
     args = parse_args()
     seed_everything(args.seed)
@@ -320,45 +391,52 @@ def main() -> None:
     device = torch.device(args.device)
     output = Path(args.output)
 
-    if (
-        args.pipeline == "same_city"
-        and Path(args.pretrain_data).resolve() != Path(args.target_data).resolve()
-    ):
-        raise ValueError(
-            "same_city requires --pretrain-data and --target-data to be the same directory"
-        )
-
-    pretrain_datasets = datasets_for(args, args.pretrain_data)
-    pretrain_nodes, pretrain_channels = inspect_dataset(
-        pretrain_datasets, "SALT pretrain city"
-    )
-    pretrain_loaders = make_loaders(args, pretrain_datasets)
-
     teacher_checkpoint = Path(args.teacher_checkpoint) if args.teacher_checkpoint else None
+    teacher_nodes = teacher_channels = None
     if args.mode in ("all", "teacher") and teacher_checkpoint is None:
+        teacher_root = require_path(args.teacher_data, "--teacher-data")
+        teacher_datasets = datasets_for(args, str(teacher_root))
+        teacher_nodes, teacher_channels = inspect_dataset(
+            teacher_datasets, "Teacher city"
+        )
         teacher_checkpoint = train_teacher(
             args,
-            pretrain_loaders,
-            pretrain_nodes,
-            pretrain_channels,
+            make_loaders(args, teacher_datasets),
+            teacher_nodes,
+            teacher_channels,
             device,
             output,
         )
     if args.mode == "teacher":
         print(f"Saved static teacher to {teacher_checkpoint.resolve()}")
         return
-    if teacher_checkpoint is None and args.mode == "student":
-        raise ValueError("--mode student requires --teacher-checkpoint")
+    if teacher_checkpoint is None and args.mode in ("student", "student_downstream"):
+        raise ValueError("Student training requires --teacher-checkpoint")
 
     student_checkpoint = Path(args.student_checkpoint) if args.student_checkpoint else None
-    if args.mode in ("all", "student") and student_checkpoint is None:
+    student_nodes = student_channels = None
+    student_datasets = None
+    if args.mode in ("all", "student", "student_downstream") and student_checkpoint is None:
         if teacher_checkpoint is None:
             raise ValueError("Student training requires a teacher checkpoint")
+        student_root = require_path(args.student_data, "--student-data")
+        if teacher_nodes is None:
+            teacher_nodes, teacher_channels = inspect_teacher_checkpoint(
+                teacher_checkpoint
+            )
+        student_datasets = datasets_for(args, str(student_root))
+        student_nodes, student_channels = inspect_dataset(
+            student_datasets, "SALT student city"
+        )
+        if teacher_channels != student_channels:
+            raise ValueError("Teacher and student traffic channel counts differ")
+        print("Frozen Teacher is node-agnostic; no sensor mapping is required")
         student_checkpoint = train_student(
             args,
-            pretrain_loaders,
-            pretrain_nodes,
-            pretrain_channels,
+            make_loaders(args, student_datasets),
+            teacher_nodes,
+            student_nodes,
+            student_channels,
             teacher_checkpoint,
             device,
             output,
@@ -369,14 +447,25 @@ def main() -> None:
     if student_checkpoint is None:
         raise ValueError("--mode downstream requires --student-checkpoint")
 
-    target_datasets = datasets_for(args, args.target_data)
+    student_root = require_path(args.student_data, "--student-data")
+    if student_datasets is None:
+        student_datasets = datasets_for(args, str(student_root))
+        student_nodes, student_channels = inspect_dataset(
+            student_datasets, "SALT student city"
+        )
+    target_root = require_path(args.target_data, "--target-data")
+    if args.pipeline == "fremont_direct" and student_root.resolve() != target_root.resolve():
+        raise ValueError("fremont_direct requires the same --student-data and --target-data")
+    if args.pipeline == "oakland_transfer" and student_root.resolve() == target_root.resolve():
+        raise ValueError("oakland_transfer requires different student and target datasets")
+    target_datasets = datasets_for(args, str(target_root))
     target_nodes, target_channels = inspect_dataset(target_datasets, "downstream city")
-    if pretrain_channels != target_channels:
-        raise ValueError("Pretraining and downstream channel counts differ")
+    if student_channels != target_channels:
+        raise ValueError("Student and downstream channel counts differ")
     run_downstream(
         args,
         student_checkpoint,
-        pretrain_nodes,
+        student_nodes,
         target_datasets,
         target_nodes,
         target_channels,

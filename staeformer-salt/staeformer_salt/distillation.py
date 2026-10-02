@@ -104,10 +104,21 @@ class SALTDistiller(nn.Module):
         input_steps: int,
         pred_steps: int,
         dropout: float,
+        teacher_node_indices: torch.Tensor | None = None,
     ):
         super().__init__()
-        if frozen_teacher.num_nodes != student.num_nodes:
-            raise ValueError("Teacher and student must distill on the same city")
+        if (
+            teacher_node_indices is None
+            and frozen_teacher.sensor_embedding_dim != 0
+            and frozen_teacher.num_nodes != student.num_nodes
+        ):
+            raise ValueError("Different teacher/student node counts require teacher_node_indices")
+        if teacher_node_indices is not None:
+            teacher_node_indices = torch.as_tensor(teacher_node_indices, dtype=torch.long)
+            if teacher_node_indices.numel() != student.num_nodes:
+                raise ValueError("teacher_node_indices length must equal student node count")
+            if teacher_node_indices.unique().numel() != teacher_node_indices.numel():
+                raise ValueError("teacher_node_indices must be unique")
         if frozen_teacher.max_steps < input_steps + pred_steps:
             raise ValueError("Teacher does not cover the complete sequence")
         if student.max_steps < input_steps + pred_steps:
@@ -121,6 +132,9 @@ class SALTDistiller(nn.Module):
         )
         self.input_steps = input_steps
         self.pred_steps = pred_steps
+        self.register_buffer(
+            "teacher_node_indices", teacher_node_indices, persistent=True
+        )
 
     def forward(self, history: torch.Tensor, future: torch.Tensor):
         sequence = torch.cat((history, future), dim=1)
@@ -135,5 +149,7 @@ class SALTDistiller(nn.Module):
         student_hidden = self.student(sequence, step_mask=mask)
         predicted = self.predictor(student_hidden[:, self.input_steps :])
         with torch.no_grad():
-            target = self.teacher(sequence)[:, self.input_steps :]
+            target = self.teacher(
+                sequence, node_indices=self.teacher_node_indices
+            )[:, self.input_steps :]
         return predicted, target.detach()

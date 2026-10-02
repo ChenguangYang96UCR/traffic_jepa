@@ -5,18 +5,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
-SOURCE_ROOT="${SOURCE_ROOT:-../dataset/Oakland}"
-TARGET_ROOT="${TARGET_ROOT:-../dataset/Fremont}"
+FREMONT_ROOT="${FREMONT_ROOT:-../dataset/Fremont}"
 TEACHER_CHECKPOINT="${TEACHER_CHECKPOINT:-runs/oakland_teacher/teacher/best_teacher.pt}"
-OUTPUT_DIR="${OUTPUT_DIR:-runs/oakland_to_fremont_salt}"
+OUTPUT_DIR="${OUTPUT_DIR:-runs/exp2_oakland_teacher_fremont_student}"
 SEED="${SEED:-2026}"
 
 python run.py \
-  --pipeline oakland_transfer \
+  --pipeline fremont_direct \
   --mode student_downstream \
   --teacher-checkpoint "$TEACHER_CHECKPOINT" \
-  --student-data "$SOURCE_ROOT" \
-  --target-data "$TARGET_ROOT" \
+  --student-data "$FREMONT_ROOT" \
+  --target-data "$FREMONT_ROOT" \
   --input-steps 12 \
   --pred-steps 12 \
   --student-epochs 50 \

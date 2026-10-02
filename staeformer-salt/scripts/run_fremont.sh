@@ -6,21 +6,20 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
 DATA_ROOT="${DATA_ROOT:-../dataset/Fremont}"
+TEACHER_CHECKPOINT="${TEACHER_CHECKPOINT:-runs/oakland_teacher/teacher/best_teacher.pt}"
 OUTPUT_DIR="${OUTPUT_DIR:-runs/fremont_salt}"
 SEED="${SEED:-2026}"
 
-# No cross-city transfer: teacher, student, and downstream forecast training all
-# use Fremont. Dataset classes still keep train/val/test strictly separated.
 python run.py \
-  --pipeline same_city \
-  --pretrain-data "$DATA_ROOT" \
+  --pipeline fremont_direct \
+  --mode student_downstream \
+  --teacher-checkpoint "$TEACHER_CHECKPOINT" \
+  --student-data "$DATA_ROOT" \
   --target-data "$DATA_ROOT" \
   --input-steps 12 \
   --pred-steps 12 \
-  --teacher-epochs 20 \
   --student-epochs 50 \
   --finetune-epochs 50 \
-  --teacher-lr 0.001 \
   --student-lr 0.0001 \
   --finetune-lr 0.001 \
   --encoder-lr-scale 0.1 \
