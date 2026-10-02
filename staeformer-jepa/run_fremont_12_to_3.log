@@ -1,0 +1,126 @@
+nohup: ignoring input
+Device=cuda; splits={'train': 10280, 'val': 2203, 'test': 2204}; history=(12, 93, 3); future=(3, 93, 3); target=(3, 93, 1)
+pretrain 001/20: train_latent_l1=0.400765 val_latent_l1=0.415646
+pretrain 002/20: train_latent_l1=0.454786 val_latent_l1=0.403875
+pretrain 003/20: train_latent_l1=0.392057 val_latent_l1=0.335693
+pretrain 004/20: train_latent_l1=0.340674 val_latent_l1=0.302736
+pretrain 005/20: train_latent_l1=0.313334 val_latent_l1=0.283677
+pretrain 006/20: train_latent_l1=0.293006 val_latent_l1=0.268734
+pretrain 007/20: train_latent_l1=0.273698 val_latent_l1=0.243121
+pretrain 008/20: train_latent_l1=0.257942 val_latent_l1=0.226395
+pretrain 009/20: train_latent_l1=0.244380 val_latent_l1=0.212706
+pretrain 010/20: train_latent_l1=0.232684 val_latent_l1=0.196328
+pretrain 011/20: train_latent_l1=0.221450 val_latent_l1=0.183154
+pretrain 012/20: train_latent_l1=0.210916 val_latent_l1=0.170777
+pretrain 013/20: train_latent_l1=0.202051 val_latent_l1=0.162857
+pretrain 014/20: train_latent_l1=0.194078 val_latent_l1=0.151208
+pretrain 015/20: train_latent_l1=0.187097 val_latent_l1=0.139933
+pretrain 016/20: train_latent_l1=0.181282 val_latent_l1=0.133805
+pretrain 017/20: train_latent_l1=0.175474 val_latent_l1=0.128654
+pretrain 018/20: train_latent_l1=0.170715 val_latent_l1=0.125934
+pretrain 019/20: train_latent_l1=0.166865 val_latent_l1=0.120370
+pretrain 020/20: train_latent_l1=0.162568 val_latent_l1=0.114775
+scratch 001/50: train_mae=0.131014 val_mae=0.058717 val_rmse=0.096433
+scratch 002/50: train_mae=0.077441 val_mae=0.066507 val_rmse=0.103535
+scratch 003/50: train_mae=0.062440 val_mae=0.054592 val_rmse=0.095414
+scratch 004/50: train_mae=0.059404 val_mae=0.062369 val_rmse=0.102429
+scratch 005/50: train_mae=0.055406 val_mae=0.052353 val_rmse=0.090654
+scratch 006/50: train_mae=0.053969 val_mae=0.054604 val_rmse=0.094873
+scratch 007/50: train_mae=0.052705 val_mae=0.060780 val_rmse=0.101617
+scratch 008/50: train_mae=0.050793 val_mae=0.048602 val_rmse=0.085903
+scratch 009/50: train_mae=0.049929 val_mae=0.045043 val_rmse=0.084451
+scratch 010/50: train_mae=0.048758 val_mae=0.047725 val_rmse=0.085258
+scratch 011/50: train_mae=0.048584 val_mae=0.044270 val_rmse=0.083631
+scratch 012/50: train_mae=0.047378 val_mae=0.046858 val_rmse=0.084544
+scratch 013/50: train_mae=0.047013 val_mae=0.046405 val_rmse=0.085237
+scratch 014/50: train_mae=0.046597 val_mae=0.049906 val_rmse=0.088592
+scratch 015/50: train_mae=0.046096 val_mae=0.044615 val_rmse=0.083681
+scratch 016/50: train_mae=0.045625 val_mae=0.046614 val_rmse=0.084265
+scratch 017/50: train_mae=0.045318 val_mae=0.046369 val_rmse=0.084047
+scratch 018/50: train_mae=0.045282 val_mae=0.043868 val_rmse=0.082906
+scratch 019/50: train_mae=0.044414 val_mae=0.043666 val_rmse=0.082530
+scratch 020/50: train_mae=0.044764 val_mae=0.043729 val_rmse=0.082421
+scratch 021/50: train_mae=0.044374 val_mae=0.046664 val_rmse=0.083685
+scratch 022/50: train_mae=0.044059 val_mae=0.043327 val_rmse=0.082485
+scratch 023/50: train_mae=0.043925 val_mae=0.043246 val_rmse=0.082149
+scratch 024/50: train_mae=0.043686 val_mae=0.043395 val_rmse=0.081985
+scratch 025/50: train_mae=0.043551 val_mae=0.044653 val_rmse=0.083010
+scratch 026/50: train_mae=0.043401 val_mae=0.043918 val_rmse=0.082749
+scratch 027/50: train_mae=0.043137 val_mae=0.043165 val_rmse=0.081726
+scratch 028/50: train_mae=0.042948 val_mae=0.043051 val_rmse=0.082195
+scratch 029/50: train_mae=0.042835 val_mae=0.042699 val_rmse=0.081703
+scratch 030/50: train_mae=0.042837 val_mae=0.041840 val_rmse=0.081293
+scratch 031/50: train_mae=0.042485 val_mae=0.043185 val_rmse=0.081945
+scratch 032/50: train_mae=0.042254 val_mae=0.042065 val_rmse=0.081557
+scratch 033/50: train_mae=0.042196 val_mae=0.042422 val_rmse=0.081309
+scratch 034/50: train_mae=0.042030 val_mae=0.044020 val_rmse=0.082485
+scratch 035/50: train_mae=0.042089 val_mae=0.043241 val_rmse=0.082488
+scratch 036/50: train_mae=0.041936 val_mae=0.042290 val_rmse=0.081412
+scratch 037/50: train_mae=0.041808 val_mae=0.042821 val_rmse=0.081597
+scratch 038/50: train_mae=0.041613 val_mae=0.042409 val_rmse=0.080876
+scratch 039/50: train_mae=0.041639 val_mae=0.043698 val_rmse=0.081474
+scratch 040/50: train_mae=0.041665 val_mae=0.043608 val_rmse=0.082536
+Early stopping scratch after epoch 40
+scratch test: MAE=0.0421954 MSE=0.0067465 RMSE=0.0821369
+frozen 001/50: train_mae=0.233451 val_mae=0.212723 val_rmse=0.273573
+frozen 002/50: train_mae=0.209711 val_mae=0.215103 val_rmse=0.275117
+frozen 003/50: train_mae=0.202541 val_mae=0.186376 val_rmse=0.240505
+frozen 004/50: train_mae=0.201854 val_mae=0.197219 val_rmse=0.250849
+frozen 005/50: train_mae=0.201838 val_mae=0.209184 val_rmse=0.265193
+frozen 006/50: train_mae=0.197098 val_mae=0.216151 val_rmse=0.277461
+frozen 007/50: train_mae=0.198998 val_mae=0.196058 val_rmse=0.248329
+frozen 008/50: train_mae=0.197188 val_mae=0.189733 val_rmse=0.241767
+frozen 009/50: train_mae=0.201609 val_mae=0.216294 val_rmse=0.273413
+frozen 010/50: train_mae=0.200284 val_mae=0.202113 val_rmse=0.260779
+frozen 011/50: train_mae=0.196609 val_mae=0.200877 val_rmse=0.259126
+frozen 012/50: train_mae=0.197277 val_mae=0.203271 val_rmse=0.262135
+frozen 013/50: train_mae=0.197485 val_mae=0.196584 val_rmse=0.250330
+Early stopping frozen after epoch 13
+frozen test: MAE=0.1861470 MSE=0.0577921 RMSE=0.2403998
+full 001/50: train_mae=0.150514 val_mae=0.061964 val_rmse=0.101151
+full 002/50: train_mae=0.076083 val_mae=0.067553 val_rmse=0.103818
+full 003/50: train_mae=0.067533 val_mae=0.058139 val_rmse=0.094833
+full 004/50: train_mae=0.057850 val_mae=0.060655 val_rmse=0.099472
+full 005/50: train_mae=0.058066 val_mae=0.049200 val_rmse=0.088488
+full 006/50: train_mae=0.053265 val_mae=0.053111 val_rmse=0.092094
+full 007/50: train_mae=0.053288 val_mae=0.056265 val_rmse=0.092253
+full 008/50: train_mae=0.055948 val_mae=0.061337 val_rmse=0.096523
+full 009/50: train_mae=0.051526 val_mae=0.048127 val_rmse=0.087134
+full 010/50: train_mae=0.049220 val_mae=0.047283 val_rmse=0.084975
+full 011/50: train_mae=0.049062 val_mae=0.050915 val_rmse=0.086784
+full 012/50: train_mae=0.048064 val_mae=0.049222 val_rmse=0.086480
+full 013/50: train_mae=0.047536 val_mae=0.050831 val_rmse=0.087695
+full 014/50: train_mae=0.047220 val_mae=0.057602 val_rmse=0.096554
+full 015/50: train_mae=0.046792 val_mae=0.046829 val_rmse=0.083916
+full 016/50: train_mae=0.046406 val_mae=0.045503 val_rmse=0.083424
+full 017/50: train_mae=0.045870 val_mae=0.048717 val_rmse=0.085955
+full 018/50: train_mae=0.045648 val_mae=0.048554 val_rmse=0.085536
+full 019/50: train_mae=0.045334 val_mae=0.045026 val_rmse=0.082723
+full 020/50: train_mae=0.045004 val_mae=0.047423 val_rmse=0.085705
+full 021/50: train_mae=0.044845 val_mae=0.048377 val_rmse=0.085999
+full 022/50: train_mae=0.045009 val_mae=0.046293 val_rmse=0.083977
+full 023/50: train_mae=0.044802 val_mae=0.051727 val_rmse=0.089429
+full 024/50: train_mae=0.044370 val_mae=0.045755 val_rmse=0.083435
+full 025/50: train_mae=0.044104 val_mae=0.052601 val_rmse=0.089001
+full 026/50: train_mae=0.043939 val_mae=0.044789 val_rmse=0.083332
+full 027/50: train_mae=0.043616 val_mae=0.047792 val_rmse=0.084845
+full 028/50: train_mae=0.043980 val_mae=0.043325 val_rmse=0.081833
+full 029/50: train_mae=0.043506 val_mae=0.048112 val_rmse=0.084360
+full 030/50: train_mae=0.043389 val_mae=0.055307 val_rmse=0.089710
+full 031/50: train_mae=0.043045 val_mae=0.044441 val_rmse=0.082926
+full 032/50: train_mae=0.043247 val_mae=0.045687 val_rmse=0.083560
+full 033/50: train_mae=0.042949 val_mae=0.044065 val_rmse=0.081934
+full 034/50: train_mae=0.042553 val_mae=0.044031 val_rmse=0.082347
+full 035/50: train_mae=0.042535 val_mae=0.047298 val_rmse=0.084985
+full 036/50: train_mae=0.042830 val_mae=0.043741 val_rmse=0.082484
+full 037/50: train_mae=0.042301 val_mae=0.043586 val_rmse=0.081809
+full 038/50: train_mae=0.042359 val_mae=0.045561 val_rmse=0.083573
+Early stopping full after epoch 38
+full test: MAE=0.0436354 MSE=0.0068068 RMSE=0.0825031
+
+Future flow forecasting comparison
+Method                                    MAE          MSE         RMSE
+-----------------------------------------------------------------------
+STAEformer from scratch             0.0421954    0.0067465    0.0821369
+JEPA + frozen STAEformer            0.1861470    0.0577921    0.2403998
+JEPA + full fine-tune               0.0436354    0.0068068    0.0825031

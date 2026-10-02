@@ -1,0 +1,169 @@
+nohup: ignoring input
+source/Oakland: splits={'train': 10280, 'val': 2203, 'test': 2204}; history=(12, 149, 1); future=(3, 149, 1); label=(3, 149, 1)
+pretrain 001/20: train_random_mask_l1=0.217615 val_future_mask_l1=0.098317
+pretrain 002/20: train_random_mask_l1=0.131517 val_future_mask_l1=0.079003
+pretrain 003/20: train_random_mask_l1=0.120279 val_future_mask_l1=0.066619
+pretrain 004/20: train_random_mask_l1=0.109617 val_future_mask_l1=0.059810
+pretrain 005/20: train_random_mask_l1=0.102293 val_future_mask_l1=0.055651
+pretrain 006/20: train_random_mask_l1=0.097010 val_future_mask_l1=0.053885
+pretrain 007/20: train_random_mask_l1=0.092308 val_future_mask_l1=0.053939
+pretrain 008/20: train_random_mask_l1=0.088981 val_future_mask_l1=0.054482
+pretrain 009/20: train_random_mask_l1=0.087642 val_future_mask_l1=0.054466
+pretrain 010/20: train_random_mask_l1=0.088365 val_future_mask_l1=0.065252
+pretrain 011/20: train_random_mask_l1=0.094431 val_future_mask_l1=0.086712
+pretrain 012/20: train_random_mask_l1=0.106135 val_future_mask_l1=0.106442
+pretrain 013/20: train_random_mask_l1=0.117097 val_future_mask_l1=0.110175
+pretrain 014/20: train_random_mask_l1=0.122701 val_future_mask_l1=0.122826
+pretrain 015/20: train_random_mask_l1=0.128288 val_future_mask_l1=0.133543
+pretrain 016/20: train_random_mask_l1=0.134827 val_future_mask_l1=0.140761
+Early stopping pretrain after epoch 16
+target/Fremont: splits={'train': 10280, 'val': 2203, 'test': 2204}; history=(12, 93, 1); future=(3, 93, 1); label=(3, 93, 1)
+scratch 001/50: train_mae=0.093925 val_mae=0.084676 val_rmse=0.138888
+scratch 002/50: train_mae=0.058319 val_mae=0.073414 val_rmse=0.108369
+scratch 003/50: train_mae=0.054417 val_mae=0.048642 val_rmse=0.091021
+scratch 004/50: train_mae=0.052488 val_mae=0.049994 val_rmse=0.090301
+scratch 005/50: train_mae=0.052062 val_mae=0.050961 val_rmse=0.092061
+scratch 006/50: train_mae=0.051001 val_mae=0.048846 val_rmse=0.088555
+scratch 007/50: train_mae=0.050730 val_mae=0.049186 val_rmse=0.089587
+scratch 008/50: train_mae=0.049847 val_mae=0.047906 val_rmse=0.088420
+scratch 009/50: train_mae=0.049273 val_mae=0.048377 val_rmse=0.087362
+scratch 010/50: train_mae=0.048526 val_mae=0.049192 val_rmse=0.088587
+scratch 011/50: train_mae=0.048217 val_mae=0.046335 val_rmse=0.086328
+scratch 012/50: train_mae=0.047409 val_mae=0.048319 val_rmse=0.088257
+scratch 013/50: train_mae=0.047058 val_mae=0.044526 val_rmse=0.084168
+scratch 014/50: train_mae=0.046684 val_mae=0.044822 val_rmse=0.085198
+scratch 015/50: train_mae=0.046589 val_mae=0.044477 val_rmse=0.084527
+scratch 016/50: train_mae=0.046290 val_mae=0.046246 val_rmse=0.084687
+scratch 017/50: train_mae=0.045945 val_mae=0.044087 val_rmse=0.084043
+scratch 018/50: train_mae=0.045727 val_mae=0.047746 val_rmse=0.090373
+scratch 019/50: train_mae=0.045673 val_mae=0.044833 val_rmse=0.084612
+scratch 020/50: train_mae=0.045355 val_mae=0.043861 val_rmse=0.083743
+scratch 021/50: train_mae=0.045095 val_mae=0.044352 val_rmse=0.083396
+scratch 022/50: train_mae=0.044987 val_mae=0.042972 val_rmse=0.082849
+scratch 023/50: train_mae=0.044824 val_mae=0.044650 val_rmse=0.084581
+scratch 024/50: train_mae=0.044705 val_mae=0.046257 val_rmse=0.085850
+scratch 025/50: train_mae=0.044557 val_mae=0.043431 val_rmse=0.083353
+scratch 026/50: train_mae=0.044524 val_mae=0.045039 val_rmse=0.084687
+scratch 027/50: train_mae=0.044284 val_mae=0.042807 val_rmse=0.082464
+scratch 028/50: train_mae=0.044295 val_mae=0.043683 val_rmse=0.082988
+scratch 029/50: train_mae=0.044080 val_mae=0.043842 val_rmse=0.083158
+scratch 030/50: train_mae=0.043908 val_mae=0.042694 val_rmse=0.082628
+scratch 031/50: train_mae=0.043885 val_mae=0.043836 val_rmse=0.083213
+scratch 032/50: train_mae=0.043858 val_mae=0.042666 val_rmse=0.082556
+scratch 033/50: train_mae=0.043648 val_mae=0.044008 val_rmse=0.081975
+scratch 034/50: train_mae=0.043615 val_mae=0.043659 val_rmse=0.082812
+scratch 035/50: train_mae=0.043545 val_mae=0.042124 val_rmse=0.082309
+scratch 036/50: train_mae=0.043430 val_mae=0.044548 val_rmse=0.084543
+scratch 037/50: train_mae=0.043323 val_mae=0.043837 val_rmse=0.082509
+scratch 038/50: train_mae=0.043324 val_mae=0.042244 val_rmse=0.082504
+scratch 039/50: train_mae=0.044143 val_mae=0.042658 val_rmse=0.082709
+scratch 040/50: train_mae=0.043242 val_mae=0.042615 val_rmse=0.082220
+scratch 041/50: train_mae=0.043194 val_mae=0.046770 val_rmse=0.086369
+scratch 042/50: train_mae=0.042973 val_mae=0.042567 val_rmse=0.082241
+scratch 043/50: train_mae=0.043096 val_mae=0.042238 val_rmse=0.081348
+scratch 044/50: train_mae=0.043111 val_mae=0.044395 val_rmse=0.083473
+scratch 045/50: train_mae=0.042884 val_mae=0.042935 val_rmse=0.082220
+Early stopping scratch after epoch 45
+scratch test: MAE=0.0425471 MSE=0.0069336 RMSE=0.0832681
+frozen 001/50: train_mae=0.094901 val_mae=0.073111 val_rmse=0.130377
+frozen 002/50: train_mae=0.069885 val_mae=0.066749 val_rmse=0.121713
+frozen 003/50: train_mae=0.066278 val_mae=0.064082 val_rmse=0.116934
+frozen 004/50: train_mae=0.063938 val_mae=0.063424 val_rmse=0.114418
+frozen 005/50: train_mae=0.062537 val_mae=0.066565 val_rmse=0.114558
+frozen 006/50: train_mae=0.061981 val_mae=0.062260 val_rmse=0.111019
+frozen 007/50: train_mae=0.060850 val_mae=0.060326 val_rmse=0.109208
+frozen 008/50: train_mae=0.060349 val_mae=0.059983 val_rmse=0.108738
+frozen 009/50: train_mae=0.059881 val_mae=0.059398 val_rmse=0.107619
+frozen 010/50: train_mae=0.059406 val_mae=0.058973 val_rmse=0.107744
+frozen 011/50: train_mae=0.059338 val_mae=0.058812 val_rmse=0.106691
+frozen 012/50: train_mae=0.059393 val_mae=0.058522 val_rmse=0.106730
+frozen 013/50: train_mae=0.058924 val_mae=0.058593 val_rmse=0.105996
+frozen 014/50: train_mae=0.058605 val_mae=0.060402 val_rmse=0.106236
+frozen 015/50: train_mae=0.058616 val_mae=0.057907 val_rmse=0.105342
+frozen 016/50: train_mae=0.058467 val_mae=0.058424 val_rmse=0.105387
+frozen 017/50: train_mae=0.058359 val_mae=0.059103 val_rmse=0.105459
+frozen 018/50: train_mae=0.058044 val_mae=0.057488 val_rmse=0.104777
+frozen 019/50: train_mae=0.058077 val_mae=0.058092 val_rmse=0.105270
+frozen 020/50: train_mae=0.057979 val_mae=0.056988 val_rmse=0.104079
+frozen 021/50: train_mae=0.057757 val_mae=0.057585 val_rmse=0.104753
+frozen 022/50: train_mae=0.057627 val_mae=0.057762 val_rmse=0.104114
+frozen 023/50: train_mae=0.057675 val_mae=0.057180 val_rmse=0.103821
+frozen 024/50: train_mae=0.057404 val_mae=0.058019 val_rmse=0.104421
+frozen 025/50: train_mae=0.057691 val_mae=0.057704 val_rmse=0.103545
+frozen 026/50: train_mae=0.057449 val_mae=0.056575 val_rmse=0.103473
+frozen 027/50: train_mae=0.057150 val_mae=0.056881 val_rmse=0.103420
+frozen 028/50: train_mae=0.057190 val_mae=0.057520 val_rmse=0.103553
+frozen 029/50: train_mae=0.057376 val_mae=0.057822 val_rmse=0.103787
+frozen 030/50: train_mae=0.056976 val_mae=0.056217 val_rmse=0.103077
+frozen 031/50: train_mae=0.056891 val_mae=0.056527 val_rmse=0.103297
+frozen 032/50: train_mae=0.056959 val_mae=0.056858 val_rmse=0.103310
+frozen 033/50: train_mae=0.056968 val_mae=0.056523 val_rmse=0.102697
+frozen 034/50: train_mae=0.056863 val_mae=0.056350 val_rmse=0.102897
+frozen 035/50: train_mae=0.056715 val_mae=0.057958 val_rmse=0.104040
+frozen 036/50: train_mae=0.056753 val_mae=0.056414 val_rmse=0.102370
+frozen 037/50: train_mae=0.056627 val_mae=0.056576 val_rmse=0.102546
+frozen 038/50: train_mae=0.056665 val_mae=0.056592 val_rmse=0.102483
+frozen 039/50: train_mae=0.056475 val_mae=0.055644 val_rmse=0.102237
+frozen 040/50: train_mae=0.056599 val_mae=0.056467 val_rmse=0.101998
+frozen 041/50: train_mae=0.056315 val_mae=0.058938 val_rmse=0.103411
+frozen 042/50: train_mae=0.056375 val_mae=0.056687 val_rmse=0.102145
+frozen 043/50: train_mae=0.056691 val_mae=0.056635 val_rmse=0.102222
+frozen 044/50: train_mae=0.056375 val_mae=0.057704 val_rmse=0.102757
+frozen 045/50: train_mae=0.056404 val_mae=0.055415 val_rmse=0.101790
+frozen 046/50: train_mae=0.056208 val_mae=0.056535 val_rmse=0.102537
+frozen 047/50: train_mae=0.056227 val_mae=0.055872 val_rmse=0.101834
+frozen 048/50: train_mae=0.056214 val_mae=0.056799 val_rmse=0.102450
+frozen 049/50: train_mae=0.056516 val_mae=0.055354 val_rmse=0.101651
+frozen 050/50: train_mae=0.056158 val_mae=0.057769 val_rmse=0.102768
+frozen test: MAE=0.0557044 MSE=0.0105833 RMSE=0.1028751
+full 001/50: train_mae=0.089926 val_mae=0.056249 val_rmse=0.100380
+full 002/50: train_mae=0.060390 val_mae=0.058994 val_rmse=0.096187
+full 003/50: train_mae=0.056357 val_mae=0.051360 val_rmse=0.093335
+full 004/50: train_mae=0.054416 val_mae=0.050189 val_rmse=0.092223
+full 005/50: train_mae=0.053501 val_mae=0.054846 val_rmse=0.096484
+full 006/50: train_mae=0.052808 val_mae=0.050205 val_rmse=0.092601
+full 007/50: train_mae=0.052132 val_mae=0.051703 val_rmse=0.092237
+full 008/50: train_mae=0.051620 val_mae=0.049367 val_rmse=0.091516
+full 009/50: train_mae=0.050854 val_mae=0.052378 val_rmse=0.092650
+full 010/50: train_mae=0.050777 val_mae=0.050576 val_rmse=0.090529
+full 011/50: train_mae=0.050135 val_mae=0.047076 val_rmse=0.088561
+full 012/50: train_mae=0.049883 val_mae=0.047456 val_rmse=0.089042
+full 013/50: train_mae=0.049620 val_mae=0.046457 val_rmse=0.087763
+full 014/50: train_mae=0.049109 val_mae=0.047634 val_rmse=0.087447
+full 015/50: train_mae=0.049114 val_mae=0.045717 val_rmse=0.086854
+full 016/50: train_mae=0.048738 val_mae=0.047026 val_rmse=0.086521
+full 017/50: train_mae=0.048402 val_mae=0.051287 val_rmse=0.089563
+full 018/50: train_mae=0.048170 val_mae=0.047310 val_rmse=0.087962
+full 019/50: train_mae=0.048163 val_mae=0.049148 val_rmse=0.087235
+full 020/50: train_mae=0.047762 val_mae=0.046622 val_rmse=0.087627
+full 021/50: train_mae=0.047578 val_mae=0.047171 val_rmse=0.086529
+full 022/50: train_mae=0.047579 val_mae=0.046535 val_rmse=0.086360
+full 023/50: train_mae=0.047213 val_mae=0.046193 val_rmse=0.085830
+full 024/50: train_mae=0.047099 val_mae=0.045073 val_rmse=0.085109
+full 025/50: train_mae=0.047011 val_mae=0.047164 val_rmse=0.086207
+full 026/50: train_mae=0.046770 val_mae=0.045427 val_rmse=0.084815
+full 027/50: train_mae=0.046514 val_mae=0.044064 val_rmse=0.084422
+full 028/50: train_mae=0.046458 val_mae=0.043600 val_rmse=0.083797
+full 029/50: train_mae=0.046331 val_mae=0.045646 val_rmse=0.084758
+full 030/50: train_mae=0.046236 val_mae=0.044913 val_rmse=0.085085
+full 031/50: train_mae=0.045961 val_mae=0.043632 val_rmse=0.083775
+full 032/50: train_mae=0.045826 val_mae=0.043541 val_rmse=0.084036
+full 033/50: train_mae=0.045901 val_mae=0.044214 val_rmse=0.083883
+full 034/50: train_mae=0.045754 val_mae=0.044397 val_rmse=0.083932
+full 035/50: train_mae=0.045427 val_mae=0.043716 val_rmse=0.083255
+full 036/50: train_mae=0.045378 val_mae=0.045935 val_rmse=0.083937
+full 037/50: train_mae=0.045329 val_mae=0.043956 val_rmse=0.083584
+full 038/50: train_mae=0.045150 val_mae=0.043755 val_rmse=0.082969
+full 039/50: train_mae=0.045124 val_mae=0.043945 val_rmse=0.083495
+full 040/50: train_mae=0.044932 val_mae=0.044157 val_rmse=0.083099
+full 041/50: train_mae=0.044873 val_mae=0.047532 val_rmse=0.087800
+full 042/50: train_mae=0.044835 val_mae=0.044615 val_rmse=0.083380
+Early stopping full after epoch 42
+full test: MAE=0.0440531 MSE=0.0072704 RMSE=0.0852665
+
+Oakland -> Fremont transfer comparison
+Method                                              MAE          MSE         RMSE
+---------------------------------------------------------------------------------
+Fremont masked-future scratch                 0.0425471    0.0069336    0.0832681
+Oakland random-mask target -> frozen          0.0557044    0.0105833    0.1028751
+Oakland random-mask target -> full FT         0.0440531    0.0072704    0.0852665
