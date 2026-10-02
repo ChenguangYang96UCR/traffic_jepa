@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "staeformer-salt"
+version = "0.1.0"
+description = "SALT distillation for STAEformer traffic-flow forecasting"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.23,<3", "torch>=2.0"]
+
+[tool.setuptools]
+packages = ["staeformer_salt"]
