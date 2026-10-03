@@ -189,3 +189,139 @@ The consolidated result is written to:
 ```text
 runs/future_focus_berkeley/future_focus_summary.txt
 ```
+
+## Supervised STAEformer transfer baseline
+
+This baseline separates the effect of SALT from ordinary supervised source-city
+pretraining:
+
+```text
+Oakland history -> STAEformer -> Oakland future flow
+                         |
+                         +-- transfer shared encoder weights
+                                      |
+                                      v
+Berkeley history -> transferred encoder -> new Berkeley forecast head
+```
+
+The Oakland sensor embedding and forecast head are not transferred. Berkeley
+receives a newly initialized sensor embedding and forecasting head. Shared
+input, step, temporal-attention, spatial-attention, normalization, and FFN
+weights are transferred. Evaluation reports:
+
+```text
+Berkeley STAEformer scratch
+Oakland supervised encoder -> Berkeley frozen
+Oakland supervised encoder -> Berkeley full fine-tuning
+```
+
+Run it with the same architecture and training budget as SALT:
+
+```bash
+nohup env \
+OAKLAND_ROOT=/absolute/path/to/Oakland \
+BERKELEY_ROOT=/absolute/path/to/Berkeley \
+OUTPUT_DIR=runs/oakland_supervised_to_berkeley \
+SALT_ROOT=runs/future_focus_berkeley \
+bash scripts/run_oakland_supervised_to_berkeley.sh \
+> run_oakland_supervised_to_berkeley.log 2>&1 &
+```
+
+The supervised baseline is written to:
+
+```text
+runs/oakland_supervised_to_berkeley/summary.txt
+```
+
+If the future-focused SALT results exist under `SALT_ROOT`, the script also
+writes the direct comparison to:
+
+```text
+runs/oakland_supervised_to_berkeley/supervised_vs_salt.txt
+```
+
+## Oakland Teacher width ablation: 32 vs 128
+
+This focused experiment reproduces the strongest future-focused configuration:
+
+```text
+Oakland Teacher -> Berkeley Student
+Student latent loss = all steps
+Downstream = Berkeley frozen and full fine-tuning
+```
+
+Only the Teacher capacity changes. The original node-agnostic Teacher has model
+dimension 32 (`16 traffic + 16 step`). The wider Teacher has dimension 128:
+
+```text
+64 traffic embedding + 64 step embedding + 0 sensor embedding
+3 Transformer layers, 4 heads, FFN dimension 256
+```
+
+The Student and downstream STAEformer remain unchanged at dimension 128. Run:
+
+```bash
+nohup env \
+OAKLAND_ROOT=/absolute/path/to/Oakland \
+BERKELEY_ROOT=/absolute/path/to/Berkeley \
+OUTPUT_DIR=runs/oakland_teacher128_berkeley_all \
+BASELINE_SALT_ROOT=runs/future_focus_berkeley \
+bash scripts/run_oakland_teacher128_berkeley_all.sh \
+> run_oakland_teacher128_berkeley_all.log 2>&1 &
+```
+
+The new result and direct d=32/d=128 comparison are written to:
+
+```text
+runs/oakland_teacher128_berkeley_all/summary.txt
+runs/oakland_teacher128_berkeley_all/teacher_width_comparison.txt
+```
+
+## Oakland Teacher -> Berkeley Student hyperparameter sweep
+
+This sweep keeps the controlled setting fixed at a node-agnostic 128-d Oakland
+Teacher and an all-step Berkeley Student loss. It varies:
+
+```text
+Teacher mask blocks:        4, 8
+Teacher future-block ratio: 0.50, 0.75, 1.00
+Berkeley full-FT LR:        1e-4, 5e-4, 1e-3
+```
+
+Each `(mask blocks, future ratio)` pair trains one Teacher and one Student;
+those checkpoints are reused for all three fine-tuning rates. The scratch
+baseline is also trained only once. The best configuration is selected by
+Berkeley validation MAE, never by test MAE.
+
+```bash
+nohup env \
+OAKLAND_ROOT=/absolute/path/to/Oakland \
+BERKELEY_ROOT=/absolute/path/to/Berkeley \
+RUN_ROOT=runs/oakland_teacher128_berkeley_sweep \
+MASK_BLOCKS_LIST="4 8" \
+FUTURE_RATIOS="0.5 0.75 1.0" \
+FINETUNE_LRS="0.0001 0.0005 0.001" \
+bash scripts/run_oakland_teacher128_berkeley_sweep.sh \
+> run_oakland_teacher128_berkeley_sweep.log 2>&1 &
+```
+
+The script is restartable and skips completed checkpoints/results. It writes:
+
+```text
+runs/oakland_teacher128_berkeley_sweep/sweep_summary.txt
+runs/oakland_teacher128_berkeley_sweep/best_config.json
+```
+
+
+```bash
+nohup env \
+OAKLAND_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Oakland \
+BERKELEY_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
+RUN_ROOT=runs/oakland_teacher128_berkeley_sweep \
+MASK_BLOCKS_LIST="4 8" \
+FUTURE_RATIOS="0.5 0.75 1.0" \
+FINETUNE_LRS="0.0001 0.0005 0.001" \
+bash scripts/run_oakland_teacher128_berkeley_sweep.sh \
+> run_oakland_teacher128_berkeley_sweep.log 2>&1 &
+
+```

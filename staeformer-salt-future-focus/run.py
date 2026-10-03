@@ -114,6 +114,15 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="When positive, reject a Teacher checkpoint with a different model dimension",
     )
+    parser.add_argument(
+        "--expected-teacher-mask-policy",
+        choices=("", "uniform", "future_biased"),
+        default="",
+    )
+    parser.add_argument(
+        "--expected-teacher-future-block-ratio", type=float, default=-1.0
+    )
+    parser.add_argument("--expected-teacher-mask-blocks", type=int, default=0)
 
     parser.add_argument("--finetune-epochs", type=int, default=50)
     parser.add_argument("--finetune-lr", type=float, default=1e-3)
@@ -539,6 +548,9 @@ def inspect_teacher_checkpoint(
     path: Path,
     require_future_focused: bool = False,
     expected_teacher_dim: int = 0,
+    expected_mask_policy: str = "",
+    expected_future_block_ratio: float = -1.0,
+    expected_mask_blocks: int = 0,
 ) -> tuple[int, int]:
     saved = torch.load(path, map_location="cpu")
     encoder = saved.get("encoder", {})
@@ -564,15 +576,33 @@ def inspect_teacher_checkpoint(
             f"expected {expected_teacher_dim}."
         )
     saved_args = saved.get("args", {})
+    policy = saved_args.get("teacher_mask_policy")
+    ratio = float(saved_args.get("teacher_future_block_ratio", -1.0))
+    mask_blocks = int(saved_args.get("mask_blocks", 0))
     if require_future_focused:
-        policy = saved_args.get("teacher_mask_policy")
-        ratio = float(saved_args.get("teacher_future_block_ratio", 0.0))
         if policy != "future_biased" or ratio <= 0.5:
             raise ValueError(
                 f"{path} is not a future-focused Teacher checkpoint: "
                 f"policy={policy!r}, future_block_ratio={ratio}. Retrain the "
                 "Teacher with --teacher-mask-policy future_biased and a ratio > 0.5."
             )
+    if expected_mask_policy and policy != expected_mask_policy:
+        raise ValueError(
+            f"{path} has Teacher mask policy {policy!r}; "
+            f"expected {expected_mask_policy!r}."
+        )
+    if (
+        expected_future_block_ratio >= 0
+        and abs(ratio - expected_future_block_ratio) > 1e-9
+    ):
+        raise ValueError(
+            f"{path} has future block ratio {ratio}; "
+            f"expected {expected_future_block_ratio}."
+        )
+    if expected_mask_blocks > 0 and mask_blocks != expected_mask_blocks:
+        raise ValueError(
+            f"{path} has {mask_blocks} mask blocks; expected {expected_mask_blocks}."
+        )
     print(
         f"Frozen Teacher checkpoint: {path}; training_nodes={nodes}; "
         f"channels={channels}; model_dim={teacher_dim}; node-agnostic"
@@ -584,10 +614,10 @@ def main() -> None:
     args = parse_args()
     if (
         args.teacher_mask_policy == "future_biased"
-        and args.teacher_future_block_ratio <= 0.5
+        and args.teacher_future_block_ratio < 0.5
     ):
         raise ValueError(
-            "future_biased masking requires --teacher-future-block-ratio > 0.5"
+            "future_biased masking requires --teacher-future-block-ratio >= 0.5"
         )
     seed_everything(args.seed)
     if args.device.startswith("cuda") and not torch.cuda.is_available():
@@ -630,6 +660,9 @@ def main() -> None:
                 teacher_checkpoint,
                 args.require_future_focused_teacher,
                 args.expected_teacher_dim,
+                args.expected_teacher_mask_policy,
+                args.expected_teacher_future_block_ratio,
+                args.expected_teacher_mask_blocks,
             )
         student_datasets = datasets_for(args, str(student_root))
         student_nodes, student_channels = inspect_dataset(

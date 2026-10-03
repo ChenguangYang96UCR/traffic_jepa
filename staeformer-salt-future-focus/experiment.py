@@ -193,6 +193,7 @@ def train_downstream(args, loaders, encoder, strategy: str, device, output: Path
     saved = torch.load(checkpoint, map_location=device)
     model.load_state_dict(saved["model"])
     test = evaluate_forecast(model, loaders["test"], device, args.pred_steps)
+    test["selection_validation"] = saved["validation"]
     write_json(output / strategy / "test_metrics.json", test)
     print(f"{strategy} test: MAE={test['mae']:.7f} MSE={test['mse']:.7f} RMSE={test['rmse']:.7f}")
     return test

@@ -171,3 +171,12 @@ OUTPUT_DIR=runs/oakland_to_fremont_causal_12step \
 bash scripts/run_oakland_to_fremont_12step.sh \
 > run_oakland_to_fremont_causal_12step.log 2>&1 &
 ```
+
+```bash
+nohup env \
+SOURCE_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Oakland \
+TARGET_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
+OUTPUT_DIR=runs/oakland_to_berkeley_causal_12step \
+bash scripts/run_oakland_to_fremont_12step.sh \
+> run_oakland_to_berkeley_causal_12step.log 2>&1 &
+```
