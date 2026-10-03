@@ -10,3 +10,5 @@ traffic_forcasting/XTraffic
 .log
 masked-st-jepa/dataset
 staeformer-jepa/runs
+staeformer-salt/runs
+staeformer-salt-future-focus/runs
