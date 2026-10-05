@@ -95,6 +95,18 @@ class SALTTests(unittest.TestCase):
         self.assertEqual(tuple(future_prediction.shape[:3]), (2, 12, 5))
         self.assertEqual(tuple(future_target.shape), tuple(future_prediction.shape))
 
+    def test_student_hidden_does_not_read_future_targets(self):
+        model = SALTDistiller(
+            encoder(5), encoder(5, 2), 12, 12, 0.0, distill_scope="all"
+        ).eval()
+        history = torch.randn(2, 12, 5, 1)
+        first_future = torch.randn(2, 12, 5, 1)
+        second_future = first_future + 100.0
+        first_prediction, first_target = model.latent_pairs(history, first_future)
+        second_prediction, second_target = model.latent_pairs(history, second_future)
+        self.assertTrue(torch.equal(first_prediction, second_prediction))
+        self.assertFalse(torch.equal(first_target, second_target))
+
     def test_shared_teacher_supports_city_sensor_subset(self):
         model = SALTDistiller(
             encoder(7),

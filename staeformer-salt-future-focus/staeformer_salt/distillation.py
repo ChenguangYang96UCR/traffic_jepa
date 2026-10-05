@@ -177,22 +177,49 @@ class SALTDistiller(nn.Module):
             "teacher_node_indices", teacher_node_indices, persistent=True
         )
 
-    def latent_pairs(self, history: torch.Tensor, future: torch.Tensor):
-        """Return predictor and frozen-Teacher latents for every time step."""
-        sequence = torch.cat((history, future), dim=1)
-        batch = sequence.shape[0]
+    def student_hidden(self, history: torch.Tensor) -> torch.Tensor:
+        """Encode history plus future mask tokens without target leakage."""
+        batch, history_steps, nodes, channels = history.shape
+        if history_steps != self.input_steps:
+            raise ValueError(
+                f"Expected {self.input_steps} history steps, got {history_steps}"
+            )
+        sequence = torch.cat(
+            (
+                history,
+                history.new_zeros(batch, self.pred_steps, nodes, channels),
+            ),
+            dim=1,
+        )
         mask = torch.zeros(
             batch,
             self.input_steps + self.pred_steps,
             dtype=torch.bool,
-            device=sequence.device,
+            device=history.device,
         )
         mask[:, self.input_steps :] = True
-        student_hidden = self.student(sequence, step_mask=mask)
-        predicted = self.predictor(student_hidden)
+        return self.student(sequence, step_mask=mask)
+
+    def teacher_hidden(
+        self, history: torch.Tensor, future: torch.Tensor
+    ) -> torch.Tensor:
+        """Encode the complete sequence with the frozen Teacher."""
+        sequence = torch.cat((history, future), dim=1)
         with torch.no_grad():
             target = self.teacher(sequence, node_indices=self.teacher_node_indices)
-        return predicted, target.detach()
+        return target.detach()
+
+    def latent_triplet(self, history: torch.Tensor, future: torch.Tensor):
+        """Return predicted latents, Teacher targets, and Student hidden states."""
+        student_hidden = self.student_hidden(history)
+        predicted = self.predictor(student_hidden)
+        target = self.teacher_hidden(history, future)
+        return predicted, target, student_hidden
+
+    def latent_pairs(self, history: torch.Tensor, future: torch.Tensor):
+        """Return predictor and frozen-Teacher latents for every time step."""
+        predicted, target, _ = self.latent_triplet(history, future)
+        return predicted, target
 
     def select_scope(self, predicted: torch.Tensor, target: torch.Tensor):
         if self.distill_scope == "future":

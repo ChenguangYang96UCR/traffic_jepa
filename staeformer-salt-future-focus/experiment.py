@@ -145,9 +145,14 @@ def evaluate_forecast(model, loader, device, pred_steps: int):
     return metrics.result()
 
 
-def train_downstream(args, loaders, encoder, strategy: str, device, output: Path):
+def train_downstream(
+    args, loaders, encoder, strategy: str, device, output: Path,
+    initial_head_state: dict[str, torch.Tensor] | None = None,
+):
     seed_everything(args.seed + 100_000)
     model = MaskedFutureForecast(encoder, args.input_steps, args.pred_steps).to(device)
+    if initial_head_state is not None:
+        model.output_projection.load_state_dict(initial_head_state)
     optimizer = torch.optim.AdamW(
         configure_downstream(model, strategy, args), weight_decay=args.weight_decay
     )

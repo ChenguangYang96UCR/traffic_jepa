@@ -312,16 +312,77 @@ runs/oakland_teacher128_berkeley_sweep/sweep_summary.txt
 runs/oakland_teacher128_berkeley_sweep/best_config.json
 ```
 
+## Best-SALT objective and checkpoint-selection ablation
+
+This pipeline fixes the best sweep configuration:
+
+```text
+Oakland Teacher dimension = 128
+Teacher mask blocks       = 8
+Teacher future ratio      = 0.50
+Berkeley Student scope    = all steps
+Downstream full-FT LR     = 1e-3
+```
+
+It compares three Student methods:
+
+```text
+A  latent L1 training; select the Student checkpoint by validation latent L1
+B  same A training trajectory; select by an online detached probe's validation MAE
+C  forecast MAE + 0.1 * latent L1; select by validation forecast MAE
+```
+
+A and B share one Student training run and differ only in checkpoint selection.
+The B probe receives detached Student features, so it cannot update the encoder.
+C uses future mask tokens and never reads future target values in its Student
+branch. Its forecasting head warm-starts the common downstream full fine-tune;
+set `--c-head-init fresh` in `run_abc_ablation.py` for an encoder-only control.
+
+Run:
 
 ```bash
 nohup env \
-OAKLAND_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Oakland \
-BERKELEY_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
-RUN_ROOT=runs/oakland_teacher128_berkeley_sweep \
-MASK_BLOCKS_LIST="4 8" \
-FUTURE_RATIOS="0.5 0.75 1.0" \
-FINETUNE_LRS="0.0001 0.0005 0.001" \
-bash scripts/run_oakland_teacher128_berkeley_sweep.sh \
-> run_oakland_teacher128_berkeley_sweep.log 2>&1 &
+BERKELEY_ROOT=/absolute/path/to/Berkeley \
+SWEEP_ROOT=runs/oakland_teacher128_berkeley_sweep \
+OUTPUT_DIR=runs/best_salt_abc \
+LATENT_WEIGHT=0.1 \
+bash scripts/run_best_salt_abc.sh \
+> run_best_salt_abc.log 2>&1 &
+```
 
+The output includes the reported best SALT row supplied for comparison:
+
+```text
+runs/best_salt_abc/abc_summary.txt
+runs/best_salt_abc/abc_results.json
+```
+
+
+```bash
+nohup env \
+BERKELEY_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
+OUTPUT_DIR=runs/best_salt_abc \
+bash scripts/run_best_salt_abc.sh \
+> run_best_salt_abc.log 2>&1 &
+```
+
+```bash
+python run_abc_ablation.py \
+  --teacher-checkpoint /home/ADS/cyang314/ucr_work/traffic_jepa/staeformer-salt-future-focus/runs/oakland_teacher128_berkeley_sweep/teachers/blocks=8_ratio=0.5/teacher/best_teacher.pt \
+  --berkeley-data /home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
+  --output runs/best_salt_abc \
+  --student-epochs 100 \
+  --finetune-epochs 50 \
+  --finetune-lr 0.001 \
+  --c-head-init fresh
+```
+
+```bash
+nohup env \
+BERKELEY_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
+SWEEP_ROOT=runs/oakland_teacher128_berkeley_sweep \
+OUTPUT_ROOT=runs/fresh_head_latent_weight_sweep \
+LATENT_WEIGHTS="0 0.01 0.03 0.1 0.3 1.0 3.0" \
+bash scripts/run_fresh_head_latent_weight_sweep.sh \
+> run_fresh_head_latent_weight_sweep.log 2>&1 &
 ```
