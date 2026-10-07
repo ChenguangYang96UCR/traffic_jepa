@@ -136,6 +136,42 @@ def configure_downstream(model: MaskedFutureForecast, strategy: str, args):
     return groups
 
 
+def make_finetune_scheduler(args, optimizer, steps_per_epoch: int):
+    """Build a downstream LR scheduler without changing optimizer groups."""
+    name = args.finetune_lr_scheduler
+    if name == "constant":
+        return None, False
+    if name == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max(1, args.finetune_epochs),
+            eta_min=args.finetune_min_lr,
+        ), False
+    if name == "onecycle":
+        max_lrs = [group["lr"] for group in optimizer.param_groups]
+        return torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=max_lrs,
+            epochs=args.finetune_epochs,
+            steps_per_epoch=max(1, steps_per_epoch),
+            pct_start=0.3,
+            anneal_strategy="cos",
+            div_factor=25.0,
+            final_div_factor=max(
+                1.0, max(max_lrs) / (25.0 * args.finetune_min_lr)
+            ),
+        ), True
+    if name == "plateau":
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=args.plateau_factor,
+            patience=args.plateau_patience,
+            min_lr=args.finetune_min_lr,
+        ), False
+    raise ValueError(name)
+
+
 @torch.no_grad()
 def evaluate_forecast(model, loader, device, pred_steps: int):
     model.eval()
@@ -155,6 +191,9 @@ def train_downstream(
         model.output_projection.load_state_dict(initial_head_state)
     optimizer = torch.optim.AdamW(
         configure_downstream(model, strategy, args), weight_decay=args.weight_decay
+    )
+    scheduler, step_per_batch = make_finetune_scheduler(
+        args, optimizer, len(loaders["train"])
     )
     best, stale = math.inf, 0
     checkpoint = output / strategy / "best_forecast.pt"
@@ -176,19 +215,29 @@ def train_downstream(
             trainable = [p for p in model.parameters() if p.requires_grad]
             torch.nn.utils.clip_grad_norm_(trainable, 5.0)
             optimizer.step()
+            if scheduler is not None and step_per_batch:
+                scheduler.step()
             total += float(loss.detach()) * labels.numel()
             count += labels.numel()
         validation = evaluate_forecast(model, loaders["val"], device, args.pred_steps)
+        if scheduler is not None and not step_per_batch:
+            if args.finetune_lr_scheduler == "plateau":
+                scheduler.step(validation["mae"])
+            else:
+                scheduler.step()
+        current_lrs = [group["lr"] for group in optimizer.param_groups]
         print(
             f"{strategy} {epoch:03d}/{args.finetune_epochs}: "
             f"train_{args.forecast_loss}={total / count:.6f} "
-            f"val_mae={validation['mae']:.6f} val_rmse={validation['rmse']:.6f}"
+            f"val_mae={validation['mae']:.6f} val_rmse={validation['rmse']:.6f} "
+            f"lr={max(current_lrs):.3e} scheduler={args.finetune_lr_scheduler}"
         )
         if validation["mae"] < best:
             best, stale = validation["mae"], 0
             torch.save({
                 "model": model.state_dict(), "epoch": epoch,
                 "validation": validation, "args": vars(args),
+                "learning_rates": current_lrs,
             }, checkpoint)
         else:
             stale += 1
@@ -199,6 +248,14 @@ def train_downstream(
     model.load_state_dict(saved["model"])
     test = evaluate_forecast(model, loaders["test"], device, args.pred_steps)
     test["selection_validation"] = saved["validation"]
+    test["training_config"] = {
+        "finetune_lr": args.finetune_lr,
+        "finetune_lr_scheduler": args.finetune_lr_scheduler,
+        "finetune_min_lr": args.finetune_min_lr,
+        "forecast_loss": args.forecast_loss,
+        "best_epoch": saved["epoch"],
+        "best_epoch_learning_rates": saved.get("learning_rates", []),
+    }
     write_json(output / strategy / "test_metrics.json", test)
     print(f"{strategy} test: MAE={test['mae']:.7f} MSE={test['mse']:.7f} RMSE={test['rmse']:.7f}")
     return test

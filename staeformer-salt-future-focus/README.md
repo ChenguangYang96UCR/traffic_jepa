@@ -357,32 +357,79 @@ runs/best_salt_abc/abc_summary.txt
 runs/best_salt_abc/abc_results.json
 ```
 
+## Fresh-head latent-weight sweep
+
+This ablation keeps the best SALT configuration and a freshly initialized
+downstream forecasting head fixed, and changes only the latent distillation
+weight in
+
+```text
+student objective = forecast loss + lambda * Teacher-to-Student latent L1
+```
+
+The default range is `0 0.01 0.03 0.1 0.3 1.0 3.0`.  Lambda zero is the
+forecast-only control.  Every run uses the same seed and fresh-head
+initialization.  The best configuration is selected by fine-tune validation
+MAE; test metrics are report-only.
 
 ```bash
 nohup env \
-BERKELEY_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
-OUTPUT_DIR=runs/best_salt_abc \
-bash scripts/run_best_salt_abc.sh \
-> run_best_salt_abc.log 2>&1 &
-```
-
-```bash
-python run_abc_ablation.py \
-  --teacher-checkpoint /home/ADS/cyang314/ucr_work/traffic_jepa/staeformer-salt-future-focus/runs/oakland_teacher128_berkeley_sweep/teachers/blocks=8_ratio=0.5/teacher/best_teacher.pt \
-  --berkeley-data /home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
-  --output runs/best_salt_abc \
-  --student-epochs 100 \
-  --finetune-epochs 50 \
-  --finetune-lr 0.001 \
-  --c-head-init fresh
-```
-
-```bash
-nohup env \
-BERKELEY_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
+BERKELEY_ROOT=/absolute/path/to/Berkeley \
 SWEEP_ROOT=runs/oakland_teacher128_berkeley_sweep \
 OUTPUT_ROOT=runs/fresh_head_latent_weight_sweep \
 LATENT_WEIGHTS="0 0.01 0.03 0.1 0.3 1.0 3.0" \
 bash scripts/run_fresh_head_latent_weight_sweep.sh \
 > run_fresh_head_latent_weight_sweep.log 2>&1 &
+```
+
+The sweep is restartable and writes:
+
+```text
+runs/fresh_head_latent_weight_sweep/fresh_head_sweep_summary.txt
+runs/fresh_head_latent_weight_sweep/fresh_head_sweep_results.json
+```
+
+## Dynamic LR, mask-ratio, and latent L2 ablation
+
+This controlled extension starts from the reported best configuration: Oakland
+Teacher d=128, eight mask blocks, 50% of blocks allocated to future steps,
+all-step Student matching, and full Berkeley fine-tuning at `1e-3`.
+
+It runs three separate ablations so each effect remains interpretable:
+
+- downstream scheduler: constant, cosine, one-cycle, and reduce-on-plateau;
+- Teacher future-block ratio: 0.25, 0.375, 0.50, 0.625, and 0.75;
+- Student latent objective: L1 or L2 (MSE).
+
+The L2 option changes only Teacher-to-Student latent distillation. Downstream
+forecast training remains MAE, so the experiment does not confound the latent
+objective with a different forecasting loss.
+
+```bash
+nohup env \
+  OAKLAND_ROOT=../TopoJEPA/dataset/Oakland \
+  BERKELEY_ROOT=../TopoJEPA/dataset/Berkeley \
+  BASE_SWEEP_ROOT=runs/oakland_teacher128_berkeley_sweep \
+  RUN_ROOT=runs/dynamic_lr_ratio_l2_sweep \
+  bash scripts/run_dynamic_lr_ratio_l2_sweep.sh \
+  > run_dynamic_lr_ratio_l2_sweep.log 2>&1 &
+```
+
+The script reuses existing ratio 0.50/0.75 Teacher and L1 Student checkpoints
+when `BASE_SWEEP_ROOT` contains them. It selects every reported winner using
+Berkeley validation MAE and writes:
+
+```text
+runs/dynamic_lr_ratio_l2_sweep/dynamic_lr_ratio_l2_summary.txt
+runs/dynamic_lr_ratio_l2_sweep/dynamic_lr_ratio_l2_results.json
+```
+
+```bash
+nohup env \
+  OAKLAND_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Oakland \
+  BERKELEY_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley \
+  BASE_SWEEP_ROOT=runs/oakland_teacher128_berkeley_sweep \
+  RUN_ROOT=runs/dynamic_lr_ratio_l2_sweep \
+  bash scripts/run_dynamic_lr_ratio_l2_sweep.sh \
+  > run_dynamic_lr_ratio_l2_sweep.log 2>&1 &
 ```

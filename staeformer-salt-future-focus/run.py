@@ -79,6 +79,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--layers", type=int, default=3)
     parser.add_argument("--student-epochs", type=int, default=50)
     parser.add_argument("--student-lr", type=float, default=1e-4)
+    parser.add_argument(
+        "--student-distill-loss",
+        choices=("l1", "l2"),
+        default="l1",
+        help="Latent Teacher-to-Student objective; l2 is mean squared error",
+    )
     parser.add_argument("--dropout", type=float, default=0.1)
 
     parser.add_argument("--mask-blocks", type=int, default=3)
@@ -126,6 +132,15 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--finetune-epochs", type=int, default=50)
     parser.add_argument("--finetune-lr", type=float, default=1e-3)
+    parser.add_argument(
+        "--finetune-lr-scheduler",
+        choices=("constant", "cosine", "onecycle", "plateau"),
+        default="constant",
+        help="Dynamic learning-rate policy used only during downstream fine-tuning",
+    )
+    parser.add_argument("--finetune-min-lr", type=float, default=1e-6)
+    parser.add_argument("--plateau-factor", type=float, default=0.5)
+    parser.add_argument("--plateau-patience", type=int, default=3)
     parser.add_argument("--encoder-lr-scale", type=float, default=0.1)
     parser.add_argument("--forecast-loss", choices=("mae", "mse"), default="mae")
     parser.add_argument(
@@ -323,7 +338,8 @@ def train_teacher(args, loaders, nodes, channels, device, output: Path) -> Path:
 @torch.no_grad()
 def evaluate_student(model, loader, device) -> dict[str, float]:
     model.eval()
-    sums = {"scope": 0.0, "all": 0.0, "history": 0.0, "future": 0.0}
+    l1_sums = {"scope": 0.0, "all": 0.0, "history": 0.0, "future": 0.0}
+    l2_sums = {"scope": 0.0, "all": 0.0, "history": 0.0, "future": 0.0}
     counts = {"scope": 0, "all": 0, "history": 0, "future": 0}
     for history, future, _ in loader:
         predicted_all, target_all = model.latent_pairs(
@@ -345,9 +361,14 @@ def evaluate_student(model, loader, device) -> dict[str, float]:
             ),
         }
         for name, (prediction, target) in regions.items():
-            sums[name] += float((prediction - target).abs().sum())
+            error = prediction - target
+            l1_sums[name] += float(error.abs().sum())
+            l2_sums[name] += float(error.square().sum())
             counts[name] += target.numel()
-    return {name: sums[name] / counts[name] for name in sums}
+    metrics = {name: l1_sums[name] / counts[name] for name in l1_sums}
+    metrics.update({f"{name}_l1": l1_sums[name] / counts[name] for name in l1_sums})
+    metrics.update({f"{name}_l2": l2_sums[name] / counts[name] for name in l2_sums})
+    return metrics
 
 
 def train_student(
@@ -396,7 +417,10 @@ def train_student(
         total, count = 0.0, 0
         for history, future, _ in loaders["train"]:
             prediction, target = model(history.to(device), future.to(device))
-            loss = torch.nn.functional.l1_loss(prediction, target)
+            if args.student_distill_loss == "l2":
+                loss = torch.nn.functional.mse_loss(prediction, target)
+            else:
+                loss = torch.nn.functional.l1_loss(prediction, target)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             parameters = list(model.student.parameters()) + list(model.predictor.parameters())
@@ -405,24 +429,25 @@ def train_student(
             total += float(loss.detach()) * target.numel()
             count += target.numel()
         validation = evaluate_student(model, loaders["val"], device)
+        selection_value = validation[f"scope_{args.student_distill_loss}"]
         print(
             f"student {epoch:03d}/{args.student_epochs}: "
             f"scope={args.student_distill_scope} "
+            f"loss={args.student_distill_loss} "
             f"train_distillation={total / count:.6f} "
-            f"val_scope={validation['scope']:.6f} "
-            f"val_all={validation['all']:.6f} "
-            f"val_history={validation['history']:.6f} "
-            f"val_future={validation['future']:.6f}"
+            f"val_scope={selection_value:.6f} "
+            f"val_scope_l1={validation['scope_l1']:.6f} "
+            f"val_scope_l2={validation['scope_l2']:.6f}"
         )
-        if validation["scope"] < best:
-            best, stale = validation["scope"], 0
+        if selection_value < best:
+            best, stale = selection_value, 0
             torch.save(
                 {
                     "student_encoder": model.student.state_dict(),
                     "predictor": model.predictor.state_dict(),
                     "teacher_checkpoint": str(teacher_checkpoint),
                     "epoch": epoch,
-                    "val_distillation": validation["scope"],
+                    "val_distillation": selection_value,
                     "student_validation": validation,
                     "args": vars(args),
                 },
@@ -438,6 +463,7 @@ def train_student(
         output / "student" / "distillation_metrics.json",
         {
             "distill_scope": args.student_distill_scope,
+            "distill_loss": args.student_distill_loss,
             "best_epoch": best_state["epoch"],
             "validation": best_state.get("student_validation", {}),
             "teacher_checkpoint": str(teacher_checkpoint),
@@ -612,13 +638,14 @@ def inspect_teacher_checkpoint(
 
 def main() -> None:
     args = parse_args()
-    if (
-        args.teacher_mask_policy == "future_biased"
-        and args.teacher_future_block_ratio < 0.5
-    ):
-        raise ValueError(
-            "future_biased masking requires --teacher-future-block-ratio >= 0.5"
-        )
+    if not 0 <= args.teacher_future_block_ratio <= 1:
+        raise ValueError("--teacher-future-block-ratio must be in [0, 1]")
+    if args.finetune_min_lr <= 0 or args.finetune_min_lr > args.finetune_lr:
+        raise ValueError("--finetune-min-lr must be positive and no larger than --finetune-lr")
+    if not 0 < args.plateau_factor < 1:
+        raise ValueError("--plateau-factor must be in (0, 1)")
+    if args.plateau_patience < 0:
+        raise ValueError("--plateau-patience must be non-negative")
     seed_everything(args.seed)
     if args.device.startswith("cuda") and not torch.cuda.is_available():
         print("CUDA unavailable; falling back to CPU")
