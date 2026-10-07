@@ -12,3 +12,7 @@ masked-st-jepa/dataset
 staeformer-jepa/runs
 staeformer-salt/runs
 staeformer-salt-future-focus/runs
+salt-encoder-backbones/runs
+salt-jepa-eight-backbones/runs
+sc-jepa-official-traffic/runs
+transformer_baseline/runs

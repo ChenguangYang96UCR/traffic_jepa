@@ -1,0 +1,14 @@
+{
+  "PatchTST": {
+    "url": "https://github.com/yuqinie98/PatchTST",
+    "commit": "204c21efe0b39603ad6e2ca640ef5896646ab1a9"
+  },
+  "STGformer": {
+    "url": "https://github.com/dreamzz5/STGformer",
+    "commit": "7c141029328a91cfeb78c1d8a0bfaa26997d30a0"
+  },
+  "STLAformer": {
+    "url": "https://github.com/laibajiu/STLAformer",
+    "commit": "f3eba25e2c63023a4834fd87d88da1c3347f16a9"
+  }
+}

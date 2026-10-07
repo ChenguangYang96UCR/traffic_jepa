@@ -1,0 +1,5 @@
+numpy>=1.23
+torch>=2.0
+timm>=0.9
+torchinfo>=1.8
+einops>=0.6

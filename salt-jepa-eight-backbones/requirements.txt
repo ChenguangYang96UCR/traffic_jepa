@@ -1,0 +1,10 @@
+# Match the existing TopoJEPA environment and preserve SciPy/Pandas binary ABI.
+numpy==1.23.5
+# Install PyTorch separately with a CUDA wheel compatible with the server driver.
+# Do not place an unbounded torch requirement here: pip may replace a working
+# CUDA build with a newer build unsupported by the cluster driver.
+torchinfo==1.8.0
+einops==0.6.1
+scipy==1.10.1
+scikit-learn==1.2.2
+positional-encodings==6.0.3
