@@ -48,9 +48,13 @@ def append(path: Path, row: dict):
     if path.exists():
         with path.open(newline="") as handle:
             rows = list(csv.DictReader(handle))
-    identity = (row["model"], row["framework"], row["method"], str(row["seed"]))
+    identity = (
+        row["model"], row["framework"], row["method"],
+        str(row["seed"]), str(row["horizon"]),
+    )
     rows = [old for old in rows if (
-        old["model"], old["framework"], old["method"], old["seed"]
+        old["model"], old["framework"], old["method"], old["seed"],
+        old.get("horizon", str(row["horizon"])),
     ) != identity]
     rows.append({key: str(value) for key, value in row.items()})
     with path.open("w", newline="") as handle:
@@ -63,6 +67,7 @@ def record(args, method, metrics, latent=""):
     row = {
         "model": args.model, "framework": "JEPA", "method": method,
         **asdict(metrics), "val_latent": latent, "seed": args.seed,
+        "history": args.input_steps, "horizon": args.pred_steps,
     }
     append(Path(args.output) / "summary.csv", row)
     print(json.dumps(row, indent=2), flush=True)
@@ -77,8 +82,8 @@ def fresh(args, dataset, adjacency):
 
 def main():
     args = arguments()
-    if (args.input_steps, args.pred_steps) != (12, 12):
-        raise ValueError("Controlled comparison is fixed to 12 history -> 12 future")
+    if args.input_steps != 12 or args.pred_steps not in (6, 9, 12):
+        raise ValueError("Supported protocol: 12 history -> horizon in {6, 9, 12}")
     if not 0.0 <= args.ema_momentum < 1.0:
         raise ValueError("EMA momentum must be in [0, 1)")
     seed_everything(args.seed)

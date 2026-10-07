@@ -5,10 +5,10 @@ from pathlib import Path
 
 import numpy as np
 
-from summarize import mean_std
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from summarize import mean_std
 
 try:
     import torch
@@ -32,7 +32,7 @@ class EncoderContractTest(unittest.TestCase):
 
     @unittest.skipUnless(
         all(importlib.util.find_spec(name) is not None for name in
-            ("torchinfo", "positional_encodings")),
+            ("torchinfo",)),
         "Install requirements.txt to exercise all official backbones",
     )
     def test_shapes(self):
@@ -43,17 +43,19 @@ class EncoderContractTest(unittest.TestCase):
         ).astype(np.float32)
         adjacency = np.eye(nodes, dtype=np.float32)
         adjacency += np.roll(np.eye(nodes, dtype=np.float32), 1, axis=0)
-        for name in BACKBONES:
-            with self.subTest(name=name):
-                model = build_backbone(
-                    name, nodes, adj=adjacency, train_x=train_x
-                )
-                latent = model.encode_history(history)
-                forecast = model(history)
-                self.assertEqual(tuple(forecast.shape), (2, 12, nodes, 1))
-                self.assertEqual(latent.shape[0], 2)
-                self.assertEqual(latent.shape[2], nodes)
-                self.assertEqual(latent.shape[3], model.latent_dim)
+        for horizon in (6, 9, 12):
+            for name in BACKBONES:
+                with self.subTest(name=name, horizon=horizon):
+                    model = build_backbone(
+                        name, nodes, input_steps=12, pred_steps=horizon,
+                        adj=adjacency, train_x=train_x,
+                    )
+                    latent = model.encode_history(history)
+                    forecast = model(history)
+                    self.assertEqual(tuple(forecast.shape), (2, horizon, nodes, 1))
+                    self.assertEqual(latent.shape[0], 2)
+                    self.assertEqual(latent.shape[2], nodes)
+                    self.assertEqual(latent.shape[3], model.latent_dim)
 
 
 class SummaryStatisticsTest(unittest.TestCase):

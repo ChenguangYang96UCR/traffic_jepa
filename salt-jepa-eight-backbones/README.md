@@ -1,6 +1,6 @@
 # Eight traffic-Transformer backbones: Scratch vs Transfer vs SALT vs JEPA
 
-This package runs one matched `12 history -> 12 future` forecasting protocol on
+This package runs matched `12 history -> 6/9/12 future` forecasting protocols on
 PDFormer, FlashST, PatchSTG, TESTAM, PatchTST, STAEformer, STGormer, and TSFormer
 (the encoder from STEP). Official model code is vendored under `upstream/`;
 exact source commits are in `UPSTREAM_COMMITS.json`.
@@ -75,8 +75,13 @@ export SEEDS="2024 2025 2026"
 nohup bash scripts/run_eight.sh > run_eight_backbones.log 2>&1 &
 ```
 
-The default protocol runs every method independently with seeds 2024, 2025,
-and 2026. Checkpoints and raw rows are stored under
+`BACKBONES` and `SEEDS` may select a subset when resuming an interrupted run.
+Set `EXPECTED_SEEDS=3` so final aggregation validates all three seeds already
+accumulated under `OUTPUT_ROOT`.
+
+The example protocol runs every method independently with seeds 2024, 2025,
+and 2026; `SEEDS` may be changed to any three distinct integers. Checkpoints
+and raw rows are stored under
 `OUTPUT_ROOT/<backbone>/seed_<seed>/`. The final file
 `OUTPUT_ROOT/summary_mean_std.csv` reports test MAE, MSE, and RMSE as mean plus
 or minus sample standard deviation (`ddof=1`) across the three seeds.
@@ -101,6 +106,29 @@ profiles and pattern keys from the training split.
 The central official encoder operations are retained, while input/output
 wrappers are adapted to the released 24-step windows. Report this as a matched
 backbone adaptation, not a reproduction of every paper's benchmark setup.
+
+## Single-seed horizon sweep
+
+To compare all four methods at 6-, 9-, and 12-step horizons while keeping
+history length 12 and seed 2026 fixed:
+
+```bash
+export TEACHER_CHECKPOINT=/home/ADS/cyang314/ucr_work/traffic_jepa/staeformer-salt-future-focus/runs/oakland_teacher128_berkeley_sweep/teachers/blocks=8_ratio=0.5/teacher/best_teacher.pt
+export SOURCE_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Oakland
+export TARGET_ROOT=/home/ADS/cyang314/ucr_work/traffic_jepa/traffic_forcasting/TopoJEPA/dataset/Berkeley
+export OUTPUT_ROOT=runs/horizon_sweep_seed2026
+export DEVICE=cuda:2
+nohup bash scripts/run_horizons.sh > run_horizons_seed2026.log 2>&1 &
+```
+
+Every horizon uses an independent model and validation-selected checkpoint.
+The script verifies that the shared Teacher checkpoint is the selected d=128,
+8-mask-block, future-block-ratio=0.50 configuration before training.
+Outputs are separated under
+`<backbone>/horizon_<6|9|12>/seed_2026/`. The final comparison is written to
+`horizon_summary_seed2026.csv`. This is a single-seed ablation, so it reports
+raw MAE/MSE/RMSE rather than mean and standard deviation.
+
 
 ```bash
 nohup env \

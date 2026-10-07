@@ -23,6 +23,8 @@ def arguments():
     parser.add_argument("--model", required=True, choices=BACKBONES)
     parser.add_argument("--teacher-checkpoint", required=True)
     parser.add_argument("--expected-teacher-dim", type=int, default=128)
+    parser.add_argument("--expected-teacher-mask-blocks", type=int, default=0)
+    parser.add_argument("--expected-teacher-future-block-ratio", type=float, default=-1.0)
     parser.add_argument("--source-data", required=True, help="Oakland for supervised-transfer control")
     parser.add_argument("--target-data", required=True, help="Berkeley student/downstream data")
     parser.add_argument("--source-adj", required=True)
@@ -54,9 +56,13 @@ def append_summary(path: Path, row: dict):
     if path.exists():
         with path.open(newline="") as handle:
             rows = list(csv.DictReader(handle))
-    identity = (row["model"], row["framework"], row["method"], str(row["seed"]))
+    identity = (
+        row["model"], row["framework"], row["method"],
+        str(row["seed"]), str(row["horizon"]),
+    )
     rows = [old for old in rows if (
-        old["model"], old["framework"], old["method"], old["seed"]
+        old["model"], old["framework"], old["method"], old["seed"],
+        old.get("horizon", str(row["horizon"])),
     ) != identity]
     rows.append({key: str(value) for key, value in row.items()})
     with path.open("w", newline="") as handle:
@@ -76,6 +82,7 @@ def record(args, method, metrics, extra=None):
     row = {
         "model": args.model, "framework": "SALT", "method": method, **asdict(metrics),
         "val_latent": "", "seed": args.seed,
+        "history": args.input_steps, "horizon": args.pred_steps,
     }
     if extra:
         row.update(extra)
@@ -85,8 +92,8 @@ def record(args, method, metrics, extra=None):
 
 def main():
     args = arguments()
-    if (args.input_steps, args.pred_steps) != (12, 12):
-        raise ValueError("This controlled comparison is fixed to 12 history -> 12 future")
+    if args.input_steps != 12 or args.pred_steps not in (6, 9, 12):
+        raise ValueError("Supported protocol: 12 history -> horizon in {6, 9, 12}")
     skip = {name.strip() for name in args.skip.split(",") if name.strip()}
     invalid = skip - {"scratch", "salt", "supervised"}
     if invalid:
@@ -118,6 +125,25 @@ def main():
         if args.expected_teacher_dim and teacher.model_dim != args.expected_teacher_dim:
             raise ValueError(
                 f"Teacher dimension is {teacher.model_dim}, expected {args.expected_teacher_dim}"
+            )
+        teacher_args = teacher.checkpoint_args
+        actual_blocks = int(teacher_args.get("mask_blocks", 0))
+        actual_ratio = float(teacher_args.get("teacher_future_block_ratio", -1.0))
+        if (
+            args.expected_teacher_mask_blocks > 0
+            and actual_blocks != args.expected_teacher_mask_blocks
+        ):
+            raise ValueError(
+                f"Teacher checkpoint has mask_blocks={actual_blocks}; expected "
+                f"{args.expected_teacher_mask_blocks}"
+            )
+        if (
+            args.expected_teacher_future_block_ratio >= 0
+            and abs(actual_ratio - args.expected_teacher_future_block_ratio) > 1e-9
+        ):
+            raise ValueError(
+                f"Teacher checkpoint has future_block_ratio={actual_ratio}; expected "
+                f"{args.expected_teacher_future_block_ratio}"
             )
         student = fresh(args, target["train"], target_adj)
         seed_everything(args.seed + 1)

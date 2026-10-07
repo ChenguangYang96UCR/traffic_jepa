@@ -100,6 +100,7 @@ def load_frozen_teacher(path: str | Path, device: torch.device):
         dropout=float(args.get("dropout", 0.1)),
     )
     teacher.load_state_dict(state)
+    teacher.checkpoint_args = dict(args)
     if teacher.sensor_embedding_dim:
         raise ValueError("Cross-city runs require a node-agnostic Teacher (--teacher-sensor-dim 0)")
     teacher.to(device).eval()
