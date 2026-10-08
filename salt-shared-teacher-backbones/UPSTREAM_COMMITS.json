@@ -1,0 +1,34 @@
+{
+  "PatchTST": {
+    "url": "https://github.com/yuqinie98/PatchTST",
+    "commit": "204c21efe0b39603ad6e2ca640ef5896646ab1a9"
+  },
+  "PDFormer": {
+    "url": "https://github.com/BUAABIGSCity/PDFormer",
+    "commit": "f8c8f6ad007a04fad3baee958b89504711852ce9"
+  },
+  "FlashST": {
+    "url": "https://github.com/HKUDS/FlashST",
+    "commit": "39d4b8e445fde7ed5272151f7e74752d2c84c58e"
+  },
+  "PatchSTG": {
+    "url": "https://github.com/LMissher/PatchSTG",
+    "commit": "8b298b230227a304a082e05241c69dca3740a73d"
+  },
+  "TESTAM": {
+    "url": "https://github.com/HyunWookL/TESTAM",
+    "commit": "20ee7815a053c4a7b64dca676581d88a68ae5078"
+  },
+  "STAEformer": {
+    "url": "https://github.com/XDZhelheim/STAEformer",
+    "commit": "fc49d39b2f1a8e3cf37b6289d7240680e1690f3f"
+  },
+  "STGormer": {
+    "url": "https://github.com/LiuZH-19/STGormer",
+    "commit": "7b70e7b8186d687c32c838b8a93be98b1f5be4a6"
+  },
+  "TSFormer": {
+    "url": "https://github.com/zezhishao/STEP",
+    "commit": "566e2738da2d83f055718d8edb609ad8dc325204"
+  }
+}

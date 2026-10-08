@@ -12,7 +12,11 @@ from summarize import mean_std
 
 try:
     import torch
+    from torch import nn
     from salt_backbones.models import BACKBONES, build_backbone
+    from salt_backbones.training import (
+        BackboneReconstructionTeacher, Distiller, SpatioTemporalBlockMasker,
+    )
 except ModuleNotFoundError as error:
     if error.name != "torch":
         raise
@@ -56,6 +60,52 @@ class EncoderContractTest(unittest.TestCase):
                     self.assertEqual(latent.shape[0], 2)
                     self.assertEqual(latent.shape[2], nodes)
                     self.assertEqual(latent.shape[3], model.latent_dim)
+
+    def test_future_biased_mask_contract(self):
+        masker = SpatioTemporalBlockMasker(
+            num_blocks=8, future_start=12, future_block_ratio=0.5,
+        )
+        mask = masker(3, 18, 17, torch.device("cpu"),
+                      torch.Generator().manual_seed(2026))
+        self.assertEqual(tuple(mask.shape), (3, 18, 17))
+        self.assertTrue(bool(mask[:, :12].any()))
+        self.assertTrue(bool(mask[:, 12:].any()))
+
+    def test_matched_teacher_student_contract(self):
+        class DummyBackbone(nn.Module):
+            latent_dim = 8
+
+            def __init__(self):
+                super().__init__()
+                self.input_steps, self.pred_steps = 12, 6
+                self.future_token = nn.Parameter(torch.zeros(1))
+                self.projection = nn.Linear(1, self.latent_dim)
+
+            def encode_sequence(self, sequence):
+                return self.projection(sequence)
+
+            def encode_history(self, history):
+                future = self.future_token.expand(
+                    history.shape[0], self.pred_steps, history.shape[2], 1
+                )
+                return self.encode_sequence(torch.cat((history, future), 1))
+
+            def encoder_parameters(self):
+                yield self.future_token
+                yield from self.projection.parameters()
+
+        teacher = DummyBackbone()
+        student = DummyBackbone()
+        history = torch.randn(2, 12, 5, 1)
+        future = torch.randn(2, 6, 5, 1)
+        prediction, target = Distiller(teacher, student, 0.0)(history, future)
+        self.assertEqual(tuple(prediction.shape), (2, 18, 5, 8))
+        self.assertEqual(prediction.shape, target.shape)
+        mask = SpatioTemporalBlockMasker()(2, 18, 5, torch.device("cpu"))
+        reconstructed = BackboneReconstructionTeacher(teacher)(
+            torch.cat((history, future), 1), mask
+        )
+        self.assertEqual(tuple(reconstructed.shape), (2, 18, 5, 1))
 
 
 class SummaryStatisticsTest(unittest.TestCase):

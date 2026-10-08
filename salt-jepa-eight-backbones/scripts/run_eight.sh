@@ -5,8 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
-# MODELS=(pdformer flashst patchstg testam patchtst staeformer stgormer tsformer)
-MODELS=(stgormer tsformer)
+read -r -a MODEL_LIST <<< "${BACKBONES:-pdformer flashst patchstg testam patchtst staeformer stgormer tsformer}"
 read -r -a SEED_LIST <<< "${SEEDS:-2024 8888 1}"
 if [[ "${#SEED_LIST[@]}" -ne 3 && -z "${ALLOW_NONTHREE_SEEDS:-}" ]]; then
   echo "ERROR: exactly three seeds are required; got: ${SEED_LIST[*]}" >&2
@@ -15,12 +14,12 @@ if [[ "${#SEED_LIST[@]}" -ne 3 && -z "${ALLOW_NONTHREE_SEEDS:-}" ]]; then
 fi
 
 for seed in "${SEED_LIST[@]}"; do
-  for model in "${MODELS[@]}"; do
+  for model in "${MODEL_LIST[@]}"; do
     echo "===== seed=$seed model=$model ====="
     SEED="$seed" MODEL="$model" bash scripts/run_one.sh
   done
 done
 
 python summarize.py \
-  --root "${OUTPUT_ROOT:-runs/eight_backbones}" \
-  --expected-seeds "${#SEED_LIST[@]}"
+  --root "${OUTPUT_ROOT:-runs/matched_teacher_backbones}" \
+  --expected-seeds "${EXPECTED_SEEDS:-${#SEED_LIST[@]}}"

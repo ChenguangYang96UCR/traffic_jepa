@@ -8,10 +8,10 @@ cd "$PROJECT_DIR"
 read -r -a MODEL_LIST <<< "${BACKBONES:-pdformer flashst patchstg testam patchtst staeformer stgormer tsformer}"
 read -r -a HORIZON_LIST <<< "${HORIZONS:-6 9 12}"
 SEED="${SEED:-2026}"
-OUTPUT_ROOT="${OUTPUT_ROOT:-runs/horizon_sweep_seed2026}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-runs/matched_teacher_horizon_sweep_seed2026}"
 export OUTPUT_ROOT
-export EXPECTED_TEACHER_MASK_BLOCKS="${EXPECTED_TEACHER_MASK_BLOCKS:-8}"
-export EXPECTED_TEACHER_FUTURE_BLOCK_RATIO="${EXPECTED_TEACHER_FUTURE_BLOCK_RATIO:-0.5}"
+export MASK_BLOCKS="${MASK_BLOCKS:-8}"
+export TEACHER_FUTURE_BLOCK_RATIO="${TEACHER_FUTURE_BLOCK_RATIO:-0.5}"
 
 if [[ "$SEED" -ne 2026 ]]; then
   echo "ERROR: the controlled horizon sweep is fixed to seed 2026; got $SEED" >&2
