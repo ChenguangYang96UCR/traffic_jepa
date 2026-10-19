@@ -8,16 +8,19 @@ from pathlib import Path
 
 
 METHOD_ORDER = [
-    "ours", "pdformer", "flashst", "testam", "patchstg", "staeformer",
-    "scjepa", "ts_jepa", "staeformer_jepa", "dcrnn", "agcrn",
+    "ours", "pdformer", "flashst", "testam", "patchstg",
+    "scjepa", "ts_jepa", "dcrnn", "agcrn", "sdgformer", "dstfgcn",
 ]
 METHOD_LABEL = {
     "ours": "Ours (STAEformer+SALT)",
-    "pdformer": "PDFormer", "flashst": "FlashST", "testam": "TESTAM",
-    "patchstg": "PatchSTG", "staeformer": "STAEformer",
-    "scjepa": "SC-JEPA", "ts_jepa": "TS-JEPA",
-    "staeformer_jepa": "STAEformer-JEPA",
+    "pdformer": "PDFormer (AAAI'23)",
+    "flashst": "FlashST (ICML'24)",
+    "testam": "TESTAM (ICLR'24)",
+    "patchstg": "PatchSTG (KDD'25)",
+    "scjepa": "SC-JEPA (SDM'26)", "ts_jepa": "TS-JEPA",
     "dcrnn": "DCRNN", "agcrn": "AGCRN",
+    "sdgformer": "SDGFormer (Neurocomputing'26)",
+    "dstfgcn": "DSTFGCN (Neural Networks'26)",
 }
 
 
@@ -49,6 +52,14 @@ def main():
             "mae": float(row["mae"]), "mse": float(row["mse"]),
             "rmse": float(row["rmse"]),
         }
+    preferred_cities = [
+        "Berkeley", "Dublin", "Newark", "San Leandro", "Pleasanton", "Livermore",
+        "Laguna Niguel", "Newport Beach", "Westminster", "Fullerton",
+        "Buena Park", "Mission Viejo",
+    ]
+    cities = [city for city in preferred_cities if city in cities] + [
+        city for city in cities if city not in preferred_cities
+    ]
     methods = [method for method in METHOD_ORDER if any(r["method"] == method for r in rows)]
     horizons = (6, 9, 12)
 
@@ -76,21 +87,34 @@ def main():
                 ]
             writer.writerow(line)
 
-    columns = "ll" + "cc" * len(methods)
+    columns = "c|c|" + "|".join("cc" for _ in methods)
+    display_label = {
+        method: ("(\\textbf{Ours})" if method == "ours" else METHOD_LABEL[method])
+        for method in methods
+    }
     latex = [
-        "\\begin{table*}[t]", "\\centering", "\\scriptsize",
-        "\\setlength{\\tabcolsep}{2.2pt}", f"\\begin{{tabular}}{{{columns}}}",
+        "% Requires: \\usepackage{booktabs,multirow,graphicx}",
+        "\\begin{table*}[h!]", "\\centering",
+        "\\setlength{\\tabcolsep}{2pt}",
+        "\\resizebox{0.98\\textwidth}{!}{",
+        f"\\begin{{tabular}}{{{columns}}}",
         "\\toprule",
-        "City & Horizon & " + " & ".join(
-            f"\\multicolumn{{2}}{{c}}{{{METHOD_LABEL[m]}}}" for m in methods
+        "\\multicolumn{2}{c|}{Methods} & " + " & ".join(
+            f"\\multicolumn{{2}}{{{'c' if index + 1 == len(methods) else 'c|'}}}"
+            f"{{{display_label[m]}}}"
+            for index, m in enumerate(methods)
         ) + " \\\\",
-        "\\cmidrule(lr){3-" + str(2 + 2 * len(methods)) + "}",
-        " & & " + " & ".join(["MSE & MAE"] * len(methods)) + " \\\\",
+        "\\midrule",
+        "\\multicolumn{2}{c|}{Metric} & " + " & ".join(["MSE & MAE"] * len(methods)) + " \\\\",
         "\\midrule",
     ]
     for city_index, city in enumerate(cities):
         for row_index, horizon in enumerate((*horizons, "Avg")):
-            cells = [f"\\multirow{{4}}{{*}}{{{city}}}" if row_index == 0 else "", str(horizon)]
+            cells = [
+                f"\\multirow{{4}}{{*}}{{\\rotatebox{{90}}{{{city}}}}}"
+                if row_index == 0 else "",
+                str(horizon),
+            ]
             for method in methods:
                 if horizon == "Avg":
                     available = [values.get((city, method, h)) for h in horizons]
@@ -105,10 +129,13 @@ def main():
             latex.append(" & ".join(cells) + " \\\\")
         if city_index + 1 < len(cities):
             latex.append("\\midrule")
+    source_cities = sorted({row["source_city"] for row in rows})
+    source_label = source_cities[0] if len(source_cities) == 1 else "Cross-city"
+    source_slug = source_label.casefold().replace(" ", "-")
     latex += [
-        "\\bottomrule", "\\end{tabular}",
-        "\\caption{Oakland-to-city transfer forecasting. All transferred models use full fine-tuning; Avg is the arithmetic mean over horizons 6, 9, and 12.}",
-        "\\label{tab:oakland-multicity-transfer}", "\\end{table*}", "",
+        "\\bottomrule", "\\end{tabular}}",
+        f"\\caption{{{source_label}-to-city transfer forecasting results. `Avg' denotes the arithmetic mean across prediction horizons $\\{{6,9,12\\}}$. All methods use full fine-tuning on the target city.}}",
+        f"\\label{{tab:{source_slug}-multicity-transfer}}", "\\end{table*}", "",
     ]
     (root / "paper_table_mae_mse.tex").write_text("\n".join(latex), encoding="utf-8")
     print(csv_path)

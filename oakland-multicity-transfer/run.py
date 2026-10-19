@@ -32,6 +32,11 @@ from salt_backbones.training import (  # noqa: E402
 )
 from transfer_benchmark.gnn import TrafficGNN, transferable_state  # noqa: E402
 from transfer_benchmark.ours import STAEformerSALTBackbone  # noqa: E402
+from transfer_benchmark.recent import (  # noqa: E402
+    DSTFGCNForecast,
+    SDGFormerForecast,
+    recent_encoder_transfer,
+)
 from transfer_benchmark.scjepa import SCJEPAForecast  # noqa: E402
 from transfer_benchmark.tsjepa import TSJEPAForecast, fit_ts_jepa  # noqa: E402
 
@@ -39,6 +44,7 @@ from transfer_benchmark.tsjepa import TSJEPAForecast, fit_ts_jepa  # noqa: E402
 METHODS = (
     "ours", "pdformer", "flashst", "testam", "patchstg", "staeformer",
     "scjepa", "ts_jepa", "staeformer_jepa", "dcrnn", "agcrn",
+    "sdgformer", "dstfgcn",
 )
 DEFAULT_TARGETS = "Berkeley,Dublin,Newark,San Leandro,Pleasanton,Livermore"
 
@@ -122,6 +128,14 @@ def build(method, dataset, adj, args, horizon):
     if method == "ours":
         return STAEformerSALTBackbone(
             dataset.num_nodes, args.history, horizon, dropout=0.1
+        )
+    if method == "sdgformer":
+        return SDGFormerForecast(
+            dataset.num_nodes, args.history, horizon, adj, len(dataset), dropout=0.1
+        )
+    if method == "dstfgcn":
+        return DSTFGCNForecast(
+            dataset.num_nodes, args.history, horizon, adj, dropout=0.2
         )
     backbone = "staeformer" if method == "staeformer_jepa" else method
     return build_backbone(
@@ -302,6 +316,8 @@ def load_transfer(model, method, source):
         }
     if method in {"dcrnn", "agcrn"}:
         return transferable_state(model, source["state"])
+    if method in {"sdgformer", "dstfgcn"}:
+        return recent_encoder_transfer(model, source["state"])
     if method == "ours":
         current = model.state_dict()
         copied, skipped = [], []

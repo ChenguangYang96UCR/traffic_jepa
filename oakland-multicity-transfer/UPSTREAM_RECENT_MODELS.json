@@ -1,0 +1,12 @@
+{
+  "SDGFormer": {
+    "repository": "https://github.com/userTGQ/SDGFormer",
+    "commit": "7c441378a8ef21f74de80817a60679887516faf5",
+    "adapter": "transfer_benchmark/recent.py"
+  },
+  "DSTFGCN": {
+    "repository": "https://github.com/SYLan2019/DSTFGCN",
+    "commit": "85d8659ad04782611356a1a959dcbca07025a3b1",
+    "adapter": "transfer_benchmark/recent.py"
+  }
+}

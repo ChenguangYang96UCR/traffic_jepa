@@ -21,6 +21,7 @@ This package runs one controlled transfer-learning table:
 | TS-JEPA | official TS-JEPA temporal-patch JEPA pretraining on Oakland | full fine-tuning with a fresh horizon-specific traffic head |
 | STAEformer-JEPA | EMA-target JEPA pretraining on Oakland | full fine-tuning |
 | DCRNN / AGCRN | supervised Oakland forecasting | full fine-tuning |
+| SDGFormer (2026) / DSTFGCN (2026) | supervised Oakland forecasting with the official released core | full fine-tuning |
 
 The source checkpoint is trained once per `(method, horizon, seed)` and reused
 for all six target cities. SC-JEPA's official representation task always uses
@@ -108,3 +109,42 @@ the sibling folders `salt-jepa-eight-backbones` and
 `sc-jepa-official-traffic`, and the pinned official source downloaded into
 `upstream/TS_JEPA`. TS-JEPA needs only the existing PyTorch and NumPy stack.
 No additional package is needed for DCRNN/AGCRN.
+
+SDGFormer is pinned at upstream commit
+`7c441378a8ef21f74de80817a60679887516faf5`; DSTFGCN is pinned at
+`85d8659ad04782611356a1a959dcbca07025a3b1`. Their official model cores are in
+`upstream/`. The adapters use traffic feature 0 and the released adjacency.
+The SDGFormer adapter loads its released model file through a local compatibility
+shim; **do not install `libcity` from pip** (there is no required PyPI package).
+DSTFGCN's absolute time lookup is set to one shared ID because the released
+city windows do not contain verified absolute timestamps; its relative
+12-step temporal graph remains active.
+
+Run only the two recent additions (all cities and horizons):
+
+```bash
+nohup env DEVICE=cuda:1 DATA_ROOT=/path/to/TopoJEPA/dataset \
+  bash scripts/run_recent.sh > run_sdgformer_dstfgcn.log 2>&1 &
+```
+
+## Orange County: Irvine source transfer
+
+The Orange County experiment first derives node-aligned city views from the
+county-level `Orange/incident_{train,val,test}.npy`, `sensors.csv`, and
+`adj_matrix.npy`. It then trains each source method on Irvine and fully
+fine-tunes on Laguna Niguel, Newport Beach, Westminster, Fullerton, Buena Park,
+and Mission Viejo. For Ours, both the masked Teacher and distilled Student are
+trained on Irvine before transfer.
+
+```bash
+nohup env \
+  DATA_ROOT=/path/to/TopoJEPA/dataset \
+  ORANGE_ROOT=/path/to/TopoJEPA/dataset/Orange \
+  DEVICE=cuda:1 \
+  bash scripts/run_irvine_orange.sh \
+  > run_irvine_orange.log 2>&1 &
+```
+
+The preparation stage is idempotent with `--reuse-existing` and writes a
+`city_view_manifest.json` containing the original county sensor indices for
+each derived city.
