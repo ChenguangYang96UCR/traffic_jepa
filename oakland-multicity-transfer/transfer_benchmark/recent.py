@@ -142,6 +142,7 @@ class SDGFormerForecast(nn.Module):
             "ext_dim": 0, "num_batches": max(1, math.ceil(train_samples / 16)),
         }
         self.core = module.SDGFormer(config, features)
+        self.representation_dim = 64
         self.register_buffer("laplacian", torch.from_numpy(_laplacian_pe(adjacency, 8)))
 
     def encode(self, history: torch.Tensor) -> torch.Tensor:
@@ -176,6 +177,7 @@ class DSTFGCNForecast(nn.Module):
                  adjacency: np.ndarray, dropout: float = 0.2):
         super().__init__()
         self.pred_steps = pred_steps
+        self.representation_dim = 48
         if input_steps != 12:
             raise ValueError("The official DSTFGCN implementation requires 12 history steps")
         if adjacency.shape != (nodes, nodes):
@@ -205,6 +207,19 @@ class DSTFGCNForecast(nn.Module):
         adjacency_tensor = self.core.adj
         delattr(self.core, "adj")
         self.core.register_buffer("adj", adjacency_tensor)
+
+    def encode(self, history: torch.Tensor) -> torch.Tensor:
+        """Return the released encoder's final spatiotemporal state [B,N,D]."""
+        time_id = torch.zeros(history.shape[0], dtype=torch.long, device=history.device)
+        x = self.core.start_conv(history.permute(0, 3, 2, 1))
+        for index in range(self.core.layers):
+            residual = x
+            shared = self.core.ST_block(x, time_id)
+            individual = self.core.layer_ST_block[index](x, time_id)
+            x = torch.relu(torch.cat((shared, individual), dim=1))
+            x = self.core.result_fuse[index](x)
+            x = self.core.bn[index](x + residual[:, :, :, -x.size(3):])
+        return x.mean(dim=-1).transpose(1, 2)
 
     def forward(self, history: torch.Tensor) -> torch.Tensor:
         time_id = torch.zeros(history.shape[0], dtype=torch.long, device=history.device)

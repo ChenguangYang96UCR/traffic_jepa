@@ -542,7 +542,8 @@ def compatible_encoder_transfer(target: SALTBackbone, source_state: dict[str, to
     city_fragments = (
         "adaptive_embedding", "sensor_embedding", "node_emb", "node_features",
         "pattern_keys", "geo_mask", "sem_mask", "lap", "graph",
-        "norm_adj", "lap_prompt",
+        "norm_adj", "lap_prompt", "fixed_support", "normalized_adjacency",
+        "graph_pe", "degree_feature",
     )
     for name, value in source_state.items():
         if any(fragment in name for fragment in head_fragments + city_fragments):

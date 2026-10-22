@@ -132,9 +132,21 @@ def main():
     source_cities = sorted({row["source_city"] for row in rows})
     source_label = source_cities[0] if len(source_cities) == 1 else "Cross-city"
     source_slug = source_label.casefold().replace(" ", "-")
+    train_fractions = {
+        float(row.get("target_train_fraction") or 1.0)
+        for row in rows
+    }
+    if len(train_fractions) == 1 and next(iter(train_fractions)) < 1:
+        percentage = 100 * next(iter(train_fractions))
+        data_protocol = (
+            f" Target fine-tuning uses {percentage:g}\\% of each target-city "
+            "training split; validation and test splits remain complete."
+        )
+    else:
+        data_protocol = ""
     latex += [
         "\\bottomrule", "\\end{tabular}}",
-        f"\\caption{{{source_label}-to-city transfer forecasting results. `Avg' denotes the arithmetic mean across prediction horizons $\\{{6,9,12\\}}$. All methods use full fine-tuning on the target city.}}",
+        f"\\caption{{{source_label}-to-city transfer forecasting results. `Avg' denotes the arithmetic mean across prediction horizons $\\{{6,9,12\\}}$. All methods use full fine-tuning on the target city.{data_protocol}}}",
         f"\\label{{tab:{source_slug}-multicity-transfer}}", "\\end{table*}", "",
     ]
     (root / "paper_table_mae_mse.tex").write_text("\n".join(latex), encoding="utf-8")

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import os
@@ -15,13 +16,26 @@ import torch
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 EIGHT = REPO / "salt-jepa-eight-backbones"
-sys.path.insert(0, str(EIGHT))
+# Prefer the self-contained package shipped with this benchmark.  The sibling
+# eight-backbone project is retained only as a compatibility fallback for old
+# checkouts that predate ``oakland-multicity-transfer/salt_backbones``.
+if (HERE / "salt_backbones").is_dir():
+    sys.path.insert(0, str(HERE))
+elif (EIGHT / "salt_backbones").is_dir():
+    sys.path.insert(0, str(EIGHT))
+else:
+    raise ModuleNotFoundError(
+        "Cannot find salt_backbones in either "
+        f"{HERE / 'salt_backbones'} or {EIGHT / 'salt_backbones'}"
+    )
 
 from salt_backbones.data import load_city  # noqa: E402
 from salt_backbones.graph import load_adjacency  # noqa: E402
+import salt_backbones.models as salt_models  # noqa: E402
 from salt_backbones.models import build_backbone, compatible_encoder_transfer  # noqa: E402
 from salt_backbones.training import (  # noqa: E402
     SpatioTemporalBlockMasker,
+    TopologyAwareSpatioTemporalBlockMasker,
     fit_distillation,
     fit_forecast,
     fit_jepa,
@@ -39,6 +53,22 @@ from transfer_benchmark.recent import (  # noqa: E402
 )
 from transfer_benchmark.scjepa import SCJEPAForecast  # noqa: E402
 from transfer_benchmark.tsjepa import TSJEPAForecast, fit_ts_jepa  # noqa: E402
+
+# The benchmark owns its training implementation, while the larger baseline
+# repository owns the downloaded official sources for PDFormer, FlashST,
+# PatchSTG, TESTAM, STAEformer, etc.  Point only the model-source root at that
+# checkout when the local package does not contain the official repositories.
+# This deliberately keeps ``salt_backbones.training`` local.
+_local_pdformer = Path(salt_models.UPSTREAM) / "PDFormer" / "libcity"
+_shared_upstream = EIGHT / "upstream"
+if not _local_pdformer.is_dir():
+    if not (_shared_upstream / "PDFormer" / "libcity").is_dir():
+        raise FileNotFoundError(
+            "PDFormer's vendored LibCity source was not found. Expected either "
+            f"{_local_pdformer} or {_shared_upstream / 'PDFormer' / 'libcity'}. "
+            "Do not run `pip install libcity`; copy the upstream baseline sources."
+        )
+    salt_models.UPSTREAM = _shared_upstream
 
 
 METHODS = (
@@ -60,6 +90,10 @@ def parse_args():
     parser.add_argument("--methods", default=",".join(METHODS))
     parser.add_argument("--horizons", default="6,9,12")
     parser.add_argument("--output", default="runs/oakland_multicity")
+    parser.add_argument(
+        "--source-cache-root", default="",
+        help="Optional experiment root whose source checkpoints are reused",
+    )
     parser.add_argument("--file-pattern", default="incident_{split}.npy")
     parser.add_argument("--traffic-feature", type=int, default=0)
     parser.add_argument("--history", type=int, default=12)
@@ -68,6 +102,14 @@ def parse_args():
     parser.add_argument("--teacher-epochs", type=int, default=20)
     parser.add_argument("--student-epochs", type=int, default=100)
     parser.add_argument("--finetune-epochs", type=int, default=100)
+    parser.add_argument(
+        "--target-train-fraction", type=float, default=1.0,
+        help="Fraction of each target-city training split used for fine-tuning",
+    )
+    parser.add_argument(
+        "--few-shot-selection", choices=("random", "prefix"), default="random",
+        help="How target training windows are selected when the fraction is below one",
+    )
     parser.add_argument("--source-lr", type=float, default=1e-3)
     parser.add_argument("--pretrain-lr", type=float, default=1e-4)
     parser.add_argument("--teacher-lr", type=float, default=1e-3)
@@ -80,6 +122,11 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--device", default="cuda:1")
     parser.add_argument("--mask-blocks", type=int, default=8)
+    parser.add_argument(
+        "--mask-mode", choices=("random_st", "topology_st"),
+        default="random_st",
+        help="Teacher masking strategy used by Traffic-SALT",
+    )
     parser.add_argument("--future-block-ratio", type=float, default=0.5)
     parser.add_argument("--ts-jepa-patch-size", type=int, default=3)
     parser.add_argument("--ts-jepa-mask-ratio", type=float, default=0.7)
@@ -106,6 +153,36 @@ def city_root(data_root: Path, name: str) -> Path:
     raise FileNotFoundError(
         f"Cannot locate city {name!r}. Tried: " + ", ".join(map(str, candidates))
     )
+
+
+def restrict_target_train(datasets, fraction: float, seed: int,
+                          selection: str = "random"):
+    """Return a city split mapping with a deterministic train-only subset."""
+    if not 0 < fraction <= 1:
+        raise ValueError(f"target train fraction must be in (0, 1], got {fraction}")
+    if fraction == 1:
+        return datasets, list(range(len(datasets["train"])))
+
+    original = datasets["train"]
+    count = max(1, int(len(original) * fraction))
+    if selection == "prefix":
+        indices = torch.arange(count)
+    elif selection == "random":
+        generator = torch.Generator().manual_seed(seed)
+        indices = torch.randperm(len(original), generator=generator)[:count].sort().values
+    else:
+        raise ValueError(f"Unknown few-shot selection: {selection}")
+
+    train = copy.copy(original)
+    train.history = original.history[indices].clone()
+    train.future = original.future[indices].clone()
+    result = dict(datasets)
+    result["train"] = train
+    return result, indices.tolist()
+
+
+def source_cache_root(args) -> Path:
+    return Path(args.source_cache_root or args.output).resolve()
 
 
 def adjacency(root: Path, nodes: int):
@@ -175,13 +252,24 @@ def train_supervised_source(method, args, horizon, source, source_loaders, sourc
 def train_salt_source(args, horizon, source, loaders, adj, source_dir, device):
     checkpoint = source_dir / "source_encoder.pt"
     if checkpoint.exists():
-        return torch.load(checkpoint, map_location="cpu")
-    masker = SpatioTemporalBlockMasker(
+        saved = torch.load(checkpoint, map_location="cpu")
+        cached_mode = saved.get("mask_mode", "random_st")
+        if cached_mode != args.mask_mode:
+            raise ValueError(
+                f"Cached SALT mask mode is {cached_mode}, requested {args.mask_mode}; "
+                "use a separate --source-cache-root"
+            )
+        return saved
+    masker_kwargs = dict(
         num_blocks=args.mask_blocks, min_time=2,
         max_time=min(6, horizon), min_sensor_ratio=0.10,
         max_sensor_ratio=0.30, future_start=args.history,
         future_block_ratio=args.future_block_ratio,
     )
+    if args.mask_mode == "topology_st":
+        masker = TopologyAwareSpatioTemporalBlockMasker(adj, **masker_kwargs)
+    else:
+        masker = SpatioTemporalBlockMasker(**masker_kwargs)
     seed_everything(args.seed + 200 + horizon)
     teacher = build("ours", source["train"], adj, args, horizon)
     teacher_result = fit_masked_teacher(
@@ -192,6 +280,7 @@ def train_salt_source(args, horizon, source, loaders, adj, source_dir, device):
             "method": "staeformer_salt", "history": args.history,
             "horizon": horizon, "mask_blocks": args.mask_blocks,
             "future_block_ratio": args.future_block_ratio,
+            "mask_mode": args.mask_mode,
         },
     )
     seed_everything(args.seed + 201 + horizon)
@@ -203,7 +292,8 @@ def train_salt_source(args, horizon, source, loaders, adj, source_dir, device):
     save_source(
         checkpoint, "ours", horizon, distilled["student"],
         {"val_latent": float(distilled["val_latent"]),
-         "teacher_val_reconstruction": float(teacher_result["val_reconstruction"])},
+         "teacher_val_reconstruction": float(teacher_result["val_reconstruction"]),
+         "mask_mode": args.mask_mode},
     )
     return torch.load(checkpoint, map_location="cpu")
 
@@ -229,7 +319,7 @@ def train_jepa_source(args, horizon, source, loaders, adj, source_dir, device):
 def train_scjepa_source(args, source_root, source_dir):
     # Official SC-JEPA predicts four 3-step target patches. Its Oakland SSL
     # checkpoint is therefore shared by downstream horizons 6/9/12.
-    checkpoint = Path(args.output) / "source" / "scjepa" / "official" / "checkpoint.pt"
+    checkpoint = source_cache_root(args) / "source" / "scjepa" / "official" / "checkpoint.pt"
     if checkpoint.exists():
         return checkpoint
     checkpoint.parent.parent.mkdir(parents=True, exist_ok=True)
@@ -255,7 +345,7 @@ def train_scjepa_source(args, source_root, source_dir):
 def train_tsjepa_source(args, loaders, device):
     # Official TS-JEPA pretrains a node-independent temporal encoder. The same
     # Oakland representation checkpoint is shared across downstream horizons.
-    source_dir = Path(args.output) / "source" / "ts_jepa" / "official"
+    source_dir = source_cache_root(args) / "source" / "ts_jepa" / "official"
     checkpoint = source_dir / "source_encoder.pt"
     if checkpoint.exists():
         return torch.load(checkpoint, map_location="cpu")
@@ -286,7 +376,7 @@ def train_tsjepa_source(args, loaders, device):
 
 
 def source_checkpoint(method, args, horizon, source_root, source, loaders, adj, device):
-    source_dir = Path(args.output) / "source" / f"h{horizon}" / method
+    source_dir = source_cache_root(args) / "source" / f"h{horizon}" / method
     source_dir.mkdir(parents=True, exist_ok=True)
     if method == "ours":
         return train_salt_source(args, horizon, source, loaders, adj, source_dir, device)
@@ -361,6 +451,8 @@ def append_result(path: Path, row):
 
 def main():
     args = parse_args()
+    if not 0 < args.target_train_fraction <= 1:
+        raise ValueError("--target-train-fraction must be in (0, 1]")
     methods = [value.strip().lower() for value in args.methods.split(",") if value.strip()]
     unknown = sorted(set(methods) - set(METHODS))
     if unknown:
@@ -396,6 +488,27 @@ def main():
                 if metrics is None:
                     target = load_city(target_root, args.history, horizon,
                                        args.traffic_feature, args.file_pattern)
+                    original_target_train_count = len(target["train"])
+                    subset_seed = args.seed + 10_000 + sum(
+                        (index + 1) * ord(character)
+                        for index, character in enumerate(city.casefold())
+                    )
+                    target, few_shot_indices = restrict_target_train(
+                        target, args.target_train_fraction, subset_seed,
+                        args.few_shot_selection,
+                    )
+                    write_json(
+                        run_dir / "few_shot_split.json",
+                        {
+                            "city": city,
+                            "fraction": args.target_train_fraction,
+                            "selection": args.few_shot_selection,
+                            "seed": subset_seed,
+                            "selected_count": len(few_shot_indices),
+                            "original_count": original_target_train_count,
+                            "indices": few_shot_indices,
+                        },
+                    )
                     loaders = make_loaders(target, args.batch_size, args.workers)
                     target_adj = adjacency(target_root, target["train"].num_nodes)
                     seed_everything(args.seed + 1000 + horizon)
@@ -414,7 +527,12 @@ def main():
                     "method": method, "horizon": horizon, "history": args.history,
                     "mae": metrics["mae"], "mse": metrics["mse"],
                     "rmse": metrics["rmse"], "seed": args.seed,
-                    "transfer": "full_finetune",
+                    "transfer": (
+                        "full_finetune" if args.target_train_fraction == 1
+                        else f"full_finetune_{args.target_train_fraction:g}_fraction"
+                    ),
+                    "target_train_fraction": args.target_train_fraction,
+                    "mask_mode": args.mask_mode if method == "ours" else "n/a",
                 }
                 append_result(output / "results.csv", row)
                 print(json.dumps(row), flush=True)

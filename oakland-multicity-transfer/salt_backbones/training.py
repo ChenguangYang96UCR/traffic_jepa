@@ -141,7 +141,8 @@ class SpatioTemporalBlockMasker:
 
     def __init__(self, num_blocks=8, min_time=2, max_time=6,
                  min_sensor_ratio=0.10, max_sensor_ratio=0.30,
-                 future_start=12, future_block_ratio=0.5):
+                 future_start=12, future_block_ratio=0.5,
+                 probabilistic_region_ratio=False):
         if num_blocks < 1:
             raise ValueError("num_blocks must be positive")
         if not 0 < min_time <= max_time:
@@ -157,12 +158,21 @@ class SpatioTemporalBlockMasker:
         self.max_sensor_ratio = max_sensor_ratio
         self.future_start = future_start
         self.future_block_ratio = future_block_ratio
+        self.probabilistic_region_ratio = probabilistic_region_ratio
 
-    def _regions(self, steps):
+    def _regions(self, steps, device=None, generator=None):
         if not 0 < self.future_start < steps:
             raise ValueError(
                 f"future_start={self.future_start} must be inside a {steps}-step sequence"
             )
+        if self.probabilistic_region_ratio:
+            draws = torch.rand(
+                self.num_blocks, device=device, generator=generator,
+            ) < self.future_block_ratio
+            return [
+                (self.future_start, steps) if bool(is_future) else (0, self.future_start)
+                for is_future in draws
+            ]
         future_blocks = int(self.num_blocks * self.future_block_ratio + 0.5)
         future_blocks = min(self.num_blocks, max(0, future_blocks))
         return (
@@ -170,12 +180,15 @@ class SpatioTemporalBlockMasker:
             + [(0, self.future_start)] * (self.num_blocks - future_blocks)
         )
 
+    def _sample_sensors(self, nodes, count, device, generator):
+        return torch.randperm(nodes, device=device, generator=generator)[:count]
+
     def __call__(self, batch, steps, nodes, device, generator=None):
         mask = torch.zeros(batch, steps, nodes, dtype=torch.bool, device=device)
         min_nodes = max(1, round(nodes * self.min_sensor_ratio))
         max_nodes = max(min_nodes, round(nodes * self.max_sensor_ratio))
         for sample in range(batch):
-            for region_start, region_end in self._regions(steps):
+            for region_start, region_end in self._regions(steps, device, generator):
                 region_steps = region_end - region_start
                 max_time = min(self.max_time, region_steps)
                 min_time = min(self.min_time, max_time)
@@ -190,10 +203,99 @@ class SpatioTemporalBlockMasker:
                     min_nodes, max_nodes + 1, (1,),
                     device=device, generator=generator,
                 ).item())
-                sensors = torch.randperm(nodes, device=device, generator=generator)[:count]
+                sensors = self._sample_sensors(nodes, count, device, generator)
                 start = region_start + local_start
                 mask[sample, start:start + length, sensors] = True
         return mask
+
+
+class TopologyAwareSpatioTemporalBlockMasker(SpatioTemporalBlockMasker):
+    """Mask a connected, size-controlled road-network region in each block."""
+
+    def __init__(self, adjacency, **kwargs):
+        super().__init__(**kwargs)
+        adjacency = np.asarray(adjacency, dtype=np.float32)
+        if adjacency.ndim != 2 or adjacency.shape[0] != adjacency.shape[1]:
+            raise ValueError(f"adjacency must be square, got {adjacency.shape}")
+        adjacency = np.maximum(adjacency, adjacency.T)
+        adjacency = np.nan_to_num(adjacency, nan=0.0, posinf=0.0, neginf=0.0)
+        adjacency = np.maximum(adjacency, 0.0)
+        np.fill_diagonal(adjacency, 0.0)
+        self.adjacency = torch.from_numpy(adjacency)
+        self._device_graphs = {}
+        support = adjacency > 0
+        self.components, unseen = [], set(range(adjacency.shape[0]))
+        while unseen:
+            seed = unseen.pop()
+            component, frontier = {seed}, [seed]
+            while frontier:
+                node = frontier.pop()
+                neighbors = set(np.flatnonzero(support[node]).tolist()) & unseen
+                unseen -= neighbors
+                component |= neighbors
+                frontier.extend(neighbors)
+            self.components.append(torch.tensor(sorted(component), dtype=torch.long))
+
+    def _graph(self, device):
+        key = str(device)
+        if key not in self._device_graphs:
+            self._device_graphs[key] = self.adjacency.to(device=device)
+        return self._device_graphs[key]
+
+    def _sample_sensors(self, nodes, count, device, generator):
+        graph = self._graph(device)
+        eligible = [component for component in self.components if len(component) >= count]
+        if not eligible:
+            raise ValueError(
+                f"No connected component contains {count} sensors; "
+                f"sizes={[len(component) for component in self.components]}"
+            )
+        component = eligible[int(torch.randint(
+            0, len(eligible), (1,), device=device, generator=generator,
+        ).item())].to(device=device)
+        seed = int(component[torch.randint(
+            0, len(component), (1,), device=device, generator=generator,
+        )].item())
+        allowed = torch.zeros(nodes, dtype=torch.bool, device=device)
+        allowed[component] = True
+        selected = torch.zeros(nodes, dtype=torch.bool, device=device)
+        selected[seed] = True
+        while int(selected.sum()) < count:
+            weights = graph[selected].sum(dim=0)
+            weights[selected] = 0
+            weights[~allowed] = 0
+            if float(weights.sum()) <= 0:
+                raise RuntimeError("Connected topology-mask expansion was exhausted")
+            selected[torch.multinomial(weights, 1, generator=generator)[0]] = True
+        return torch.nonzero(selected, as_tuple=False).flatten()
+
+
+class MatchedRandomPointMasker:
+    """Uniformly mask isolated space-time points without segment allocation.
+
+    For a fair ablation, the number of masked points in each sample is copied
+    from a reference block masker. The selected locations are then redrawn
+    uniformly over the complete history+future tensor, so there is no imposed
+    history:future ratio and no spatial or temporal contiguity.
+    """
+
+    def __init__(self, reference_masker: SpatioTemporalBlockMasker):
+        self.reference_masker = reference_masker
+        self.future_start = reference_masker.future_start
+
+    def __call__(self, batch, steps, nodes, device, generator=None):
+        reference = self.reference_masker(
+            batch, steps, nodes, device, generator,
+        )
+        result = torch.zeros_like(reference)
+        population = steps * nodes
+        for sample in range(batch):
+            count = int(reference[sample].sum().item())
+            indices = torch.randperm(
+                population, device=device, generator=generator,
+            )[:count]
+            result[sample].view(-1)[indices] = True
+        return result
 
 
 class BackboneReconstructionTeacher(nn.Module):

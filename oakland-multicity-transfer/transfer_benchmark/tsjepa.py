@@ -111,6 +111,7 @@ class TSJEPAForecast(nn.Module):
         self.patch_size = patch_size
         self.num_patches = input_steps // patch_size
         self.embed_dim = embed_dim
+        self.representation_dim = embed_dim
         self.encoder = Encoder(
             num_patches=self.num_patches, dim_in=patch_size,
             kernel_size=patch_size, embed_dim=embed_dim, embed_bias=True,
@@ -128,7 +129,12 @@ class TSJEPAForecast(nn.Module):
         batch, _, nodes, _ = history.shape
         return history[..., 0].permute(0, 2, 1).reshape(
             batch * nodes, self.num_patches, self.patch_size
-        )
+        ).contiguous()
+
+    def encode(self, history: torch.Tensor) -> torch.Tensor:
+        batch, _, nodes, _ = history.shape
+        hidden = self.encoder(self.patches(history))
+        return hidden.mean(dim=1).reshape(batch, nodes, self.embed_dim)
 
     def forward(self, history: torch.Tensor) -> torch.Tensor:
         batch, _, nodes, _ = history.shape
@@ -177,7 +183,7 @@ class TSJEPAPretrainer(nn.Module):
             raise ValueError(f"Expected {self.input_steps} history steps, got {steps}")
         return history[..., 0].permute(0, 2, 1).reshape(
             batch * nodes, self.num_patches, self.patch_size
-        )
+        ).contiguous()
 
     def loss(self, history: torch.Tensor, mask_ratio: float, generator=None):
         patches = self.patches(history)

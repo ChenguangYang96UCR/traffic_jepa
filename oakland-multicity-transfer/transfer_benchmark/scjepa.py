@@ -30,13 +30,14 @@ class SCJEPAForecast(nn.Module):
         self.encoder, self.quantizer, self.predictor = modules[:3]
         codes = self.common.OFFICIAL_CONFIG["num_codes"]
         self.forecast_head = nn.Linear(self.num_patches * codes, pred_steps)
+        self.representation_dim = codes
 
     def load_pretrained(self, checkpoint):
         self.encoder.load_state_dict(checkpoint["encoder_online"])
         self.quantizer.load_state_dict(checkpoint["quantizer_online"])
         self.predictor.load_state_dict(checkpoint["predictor"])
 
-    def forward(self, history):
+    def encode(self, history):
         batch, steps, nodes, _ = history.shape
         flat = history[..., 0].transpose(1, 2).reshape(batch * nodes, steps)
         mean = flat.mean(1, keepdim=True)
@@ -45,6 +46,24 @@ class SCJEPAForecast(nn.Module):
             batch * nodes, self.num_patches, self.patch_len, 1
         )
         hidden = self.encoder(patches)
+        probabilities, _ = self.quantizer(hidden)
+        logits, _ = self.predictor(probabilities)
+        codes = torch.softmax(
+            logits / self.common.OFFICIAL_CONFIG["prediction_temperature"], dim=-1
+        )
+        return codes.reshape(batch, nodes, self.num_patches, -1).mean(dim=2)
+
+    def forward(self, history):
+        batch, _, nodes, _ = history.shape
+        flat = history[..., 0].transpose(1, 2).reshape(batch * nodes, -1)
+        mean = flat.mean(1, keepdim=True)
+        std = flat.std(1, keepdim=True).clamp_min(1e-6)
+        # Keep the released SC-JEPA head contract while exposing ``encode``
+        # separately for SALT distillation.
+        normalized = ((flat - mean) / std).reshape(
+            batch * nodes, self.num_patches, self.patch_len, 1
+        )
+        hidden = self.encoder(normalized)
         probabilities, _ = self.quantizer(hidden)
         logits, _ = self.predictor(probabilities)
         codes = torch.softmax(
